@@ -20,13 +20,13 @@ from . import __version__
 from .discovery import discover, iter_repos, set_rels
 from .pull import pull
 from .status import collect_status, fetch_all, fetch_and_status
-from .tree import LiveTree, render
+from .tree import LiveTree, render, render_flat
 
 # Flags that belong to a subcommand. Used by _inject_tree to decide whether
 # a leading argument is a subcommand or a path/flag for the default one.
 _TREE_FLAGS = {
     "--no-symlinks", "--no-fetch", "--no-color", "--max-depth",
-    "--dry-run", "--json",
+    "--dry-run", "--json", "--tree",
 }
 _PULL_FLAGS = {"--no-color", "--dry-run", "--json", "--no-fetch"}
 
@@ -84,6 +84,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=50,
         help="Maximum recursion depth (default: 50).",
+    )
+    tree_p.add_argument(
+        "--tree",
+        action="store_true",
+        help="Show the full directory tree instead of a flat repo list.",
     )
 
     # `pulli pull` — pull repos that are behind.
@@ -202,10 +207,11 @@ def _run_tree(args) -> int:
         return 0
 
     use_color = _use_color(args)
+    flat = not args.tree
     if sys.stdout.isatty():
         # Stream: print the skeleton immediately, then fill each repo's
         # status line in as it becomes ready — no blank-screen wait.
-        live = LiveTree(tree, use_color=use_color)
+        live = LiveTree(tree, use_color=use_color, flat=flat)
         fetch_and_status(
             repos,
             quiet=True,
@@ -215,11 +221,11 @@ def _run_tree(args) -> int:
         )
     else:
         # Not a terminal: no in-place cursor control. Do the work, then
-        # print the complete tree once (byte-identical to before).
+        # print the complete output once (byte-identical to before).
         if not args.no_fetch:
             fetch_all(repos, quiet=True, use_color=use_color)
         collect_status(tree)
-        print(render(tree, use_color=use_color))
+        print(render_flat(tree, use_color=use_color) if flat else render(tree, use_color=use_color))
     return 0
 
 

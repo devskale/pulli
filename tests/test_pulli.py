@@ -23,7 +23,7 @@ from pulli import cli  # noqa: E402
 from pulli.discovery import discover, iter_repos, set_rels  # noqa: E402
 from pulli.pull import _classify, _first_meaningful_line, pull  # noqa: E402
 from pulli.status import collect_status, fetch_all  # noqa: E402
-from pulli.tree import _shorten_url, render  # noqa: E402
+from pulli.tree import _shorten_url, render, render_flat  # noqa: E402
 
 
 # ── fixtures ─────────────────────────────────────────────────────────────
@@ -454,10 +454,10 @@ def test_broken_repo_exits_nonzero(lab, tmp_path):
     "url,expected",
     [
         ("git@github.com:devskale/klark0.git", "devskale/klark0"),
-        ("https://github.com/devskale/klark0.git", "https://github.com/devskale/klark0"),
-        ("https://github.com/devskale/klark0", "https://github.com/devskale/klark0"),
-        ("https://user:token@github.com/devskale/klark0.git", "https://github.com/devskale/klark0"),
-        ("https://ghp_secret@github.com/devskale/klark0.git", "https://github.com/devskale/klark0"),
+        ("https://github.com/devskale/klark0.git", "devskale/klark0"),
+        ("https://github.com/devskale/klark0", "devskale/klark0"),
+        ("https://user:token@github.com/devskale/klark0.git", "devskale/klark0"),
+        ("https://ghp_secret@github.com/devskale/klark0.git", "devskale/klark0"),
         ("/local/path/repo.git", "/local/path/repo"),
         ("", ""),
     ],
@@ -465,9 +465,9 @@ def test_broken_repo_exits_nonzero(lab, tmp_path):
 def test_shorten_url_strips_credentials(url, expected):
     """Credentials must never survive into display text.
 
-    The host prefix is only dropped for scp-style `git@host:owner/repo`
-    URLs; a full https:// URL keeps its scheme, so the assertion is about
-    the absence of the secret, not about shortening.
+    Known hosts (github.com, gitlab.com, bitbucket.org) are stripped to
+    `owner/repo` regardless of scheme; a less common host keeps its name.
+    The assertion is about the absence of the secret and the compact form.
     """
     out = _shorten_url(url)
     assert out == expected
@@ -520,6 +520,39 @@ def test_no_upstream_renders_placeholder(lab):
     out = render(tree, use_color=False)
     assert "↓0 ↑0" not in out
     assert "·  ·" in out
+
+
+def test_render_flat_lists_only_repos(lab):
+    """The default output is a flat list of repos — no tree scaffolding, no
+    plain directories, no pruned dirs."""
+    lab.clone("clean")
+    (lab.root / "plaindir").mkdir()          # a plain dir must NOT appear
+    (lab.root / "node_modules" / "x").mkdir(parents=True)  # pruned, no repo
+    tree = discover(lab.root)
+    set_rels(tree)
+    collect_status(tree)
+    out = render_flat(tree, use_color=False)
+    lines = out.splitlines()
+    assert "clean" in out
+    assert "plaindir" not in out
+    assert "node_modules" not in out
+    assert not any("├──" in l or "└──" in l for l in lines)  # no connectors
+    assert all(l.strip() for l in lines)  # no empty lines
+
+
+def test_cli_default_is_flat_and_tree_flag_restores_tree(lab, capsys):
+    """`pulli` (no flag) prints a flat list; `pulli --tree` prints the tree."""
+    lab.clone("r")
+    (lab.root / "plaindir").mkdir()
+    assert cli.main(["--no-fetch", str(lab.root)]) == 0
+    flat = capsys.readouterr().out
+    assert "plaindir" not in flat
+    assert "r" in flat
+
+    assert cli.main(["--tree", "--no-fetch", str(lab.root)]) == 0
+    tree = capsys.readouterr().out
+    assert "plaindir" in tree
+    assert "├──" in tree
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────

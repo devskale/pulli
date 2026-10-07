@@ -6,11 +6,18 @@ fast-forward the ones that are behind upstream.
 ## Install
 
 ```bash
-cd ~/code/puller
-uv tool install --force .
+uv tool install git+https://github.com/devskale/pulli
+# or
+pipx install git+https://github.com/devskale/pulli
 ```
 
-This puts `pulli` on your PATH (`~/.local/bin/pulli`).
+Both put `pulli` on your PATH (`~/.local/bin/pulli`). To install a local
+checkout instead (development):
+
+```bash
+cd ~/code/pulli
+uv tool install --force .
+```
 
 ## Usage
 
@@ -24,8 +31,15 @@ pulli pull --dry-run ~/code    # show what would be pulled, don't pull
 
 ### `tree` (default)
 
+By default `pulli` prints a **flat list of the repos only** — one line per
+repo, sorted by path — with no directory scaffolding, no `node_modules`/
+`.claude`/`dist` noise. Pass `--tree` to get the full directory tree
+instead (plain dirs, pruned dirs, symlinks, submodules, and the box-drawing
+connectors).
+
 | flag | effect |
 | --- | --- |
+| `--tree` | show the full directory tree instead of the flat repo list |
 | `--no-fetch` | don't fetch remotes before showing status |
 | `--no-symlinks` | don't follow symlinks (default: follow, marked) |
 | `--max-depth N` | limit recursion (default: 50) |
@@ -88,6 +102,35 @@ $ pulli pull --dry-run ~/code
 Dry run — no pulls performed.
 
 Would pull 1 repo(s).
+```
+
+## What the output shows
+
+### Flat list (default)
+
+```
+clones/pi  earendil-works/pi  main  ↓0 ↑0  ● clean
+clones/gogcli  openclaw/gogcli  main  ↓0 ↑0  ◐ dirty 5
+kontext.one  devskale/kontext.one  main  ↓0 ↑0  ◐ dirty 5
+```
+
+Each line is `path  remote  branch  ↓behind ↑ahead  state`. Repos are
+sorted by path, so a run is reproducible.
+
+### Tree (`--tree`)
+
+```
+~/code
+├── clones/
+│   ├── herdr    ogulcancelik/herdr    master  ↓0 ↑0  ● clean
+│   ├── pi       earendil-works/pi     main    ↓33 ↑0 ● clean
+│   └── gogcli   openclaw/gogcli       main    ↓0 ↑0  ◐ dirty 5
+├── handoffs -> code/skaleshare/handoffs (alias)
+├── kontext.one  devskale/kontext.one  main    ↓0 ↑0  ◐ dirty 5
+│   ├── klark0     devskale/klark0      dev     ↓0 ↑0  ● clean
+│   └── python-utils (submodule)                   ↓0 ↑0  ● clean
+└── backups/
+    └── model-proxy.git/  (bare repo — nothing to pull)
 ```
 
 ## What the tree shows

@@ -1,8 +1,19 @@
 [project]
 name = "pulli"
-version = "0.1.1"
+version = "0.2.0"
 description = "Walk a directory tree, show git repos with status, and fast-forward the ones that are behind upstream."
+readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Stefan Waldherr" }]
+keywords = ["git", "cli", "pull", "status", "developer-tools"]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Version Control :: Git",
+]
 dependencies = []
 
 [project.scripts]

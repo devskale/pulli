@@ -40,7 +40,7 @@ import shutil
 import sys
 import threading
 
-from .discovery import RepoNode
+from .discovery import RepoNode, iter_repos
 
 # ANSI colors — kept minimal; degrade gracefully on non-TTY (we strip them).
 _RESET = "\x1b[0m"
@@ -128,8 +128,12 @@ def _shorten_url(url: str) -> str:
     elif "@" in url and ":" in url.split("@", 1)[0]:
         # user:pass@host:path — strip creds
         url = url.split("@", 1)[1]
-    # strip a leading host (github.com/, gitlab.com/, ...)
-    for host in ("github.com/", "gitlab.com/", "bitbucket.org/"):
+    # For the common hosts, drop scheme+host so the display is just
+    # `owner/repo` — the same compact form as a scp-style `git@host:owner/repo`
+    # URL. A less common host keeps its name so the repo is identifiable.
+    for host in ("https://github.com/", "https://gitlab.com/",
+                 "https://bitbucket.org/", "http://github.com/",
+                 "http://gitlab.com/", "http://bitbucket.org/"):
         if url.startswith(host):
             url = url[len(host):]
             break
@@ -158,10 +162,15 @@ def _ahead_behind(node: RepoNode) -> str:
     return f"↓{node.behind or 0} ↑{node.ahead or 0}"
 
 
-def _repo_tail(node: RepoNode, C) -> str:
-    """The status column for a repo node: remote, branch, ↓↑, glyph + state."""
+def _repo_tail_parts(node: RepoNode, C) -> list[str]:
+    """The status columns for a repo node, as a list of aligned-able parts.
+
+    Returns `[url, branch, ahead/behind, state]` so a flat renderer can pad
+    the url column to a fixed width before joining. The tree renderer just
+    joins them with two spaces.
+    """
     if node.error:
-        return C(f"✗ {node.error}", _RED)
+        return [C(f"✗ {node.error}", _RED)]
 
     url = _shorten_url(node.url)
     parts = [
@@ -184,7 +193,12 @@ def _repo_tail(node: RepoNode, C) -> str:
         )
 
     parts.append(state)
-    return "  ".join(p for p in parts if p)
+    return parts
+
+
+def _repo_tail(node: RepoNode, C) -> str:
+    """The status column for a repo node: remote, branch, ↓↑, glyph + state."""
+    return "  ".join(p for p in _repo_tail_parts(node, C) if p)
 
 
 def _label(node: RepoNode, C) -> str:
@@ -263,6 +277,45 @@ def _build_lines(
     return lines, repo_line, repo_base
 
 
+def _build_flat_lines(
+    root: RepoNode,
+    C,
+    tail,
+) -> tuple[list[str], dict[int, int], dict[int, str]]:
+    """Build a flat list: one line per repo, no tree structure.
+
+    `tail(node)` renders the status column for a repo node. Returns
+    `(lines, repo_line, repo_base)` with the same contract as
+    `_build_lines`, so a live renderer can swap a repo's status in place.
+    Repos are ordered by display path, so two identical runs are identical.
+    """
+    lines: list[str] = []
+    repo_line: dict[int, int] = {}
+    repo_base: dict[int, str] = {}
+    repos = sorted(iter_repos(root), key=lambda n: n.rel)
+    if not repos:
+        return lines, repo_line, repo_base
+    # Pad every path to the widest one so the status columns line up like a
+    # table instead of starting wherever the previous path happened to end.
+    path_width = max(_visible_width(C(n.rel, _DIM)) for n in repos)
+    # Pad the url column too, so branch / ahead-behind / state also align.
+    url_width = max((_visible_width(_shorten_url(n.url)) for n in repos), default=0)
+    for n in repos:
+        base = C(n.rel, _DIM)
+        padded = base + " " * (path_width - _visible_width(base))
+        # Rebuild the tail with a url column padded to a fixed width. Always
+        # emit the url cell (even when empty) so the branch column lines up
+        # for repos that have no remote too.
+        cols = _repo_tail_parts(n, C)
+        if len(cols) >= 4:
+            cols[0] = cols[0] + " " * (url_width - _visible_width(cols[0]))
+        text = "  ".join(c for c in cols if c)
+        lines.append(padded + "  " + text)
+        repo_line[id(n)] = len(lines) - 1
+        repo_base[id(n)] = padded
+    return lines, repo_line, repo_base
+
+
 def render(root: RepoNode, *, use_color: bool = True) -> str:
     """Render the full tree as a string."""
 
@@ -272,6 +325,18 @@ def render(root: RepoNode, *, use_color: bool = True) -> str:
         return "".join(codes) + s + _RESET
 
     lines, _, _ = _build_lines(root, C, lambda n: _repo_tail(n, C))
+    return "\n".join(lines)
+
+
+def render_flat(root: RepoNode, *, use_color: bool = True) -> str:
+    """Render a flat list of repos (one line each), not the tree."""
+
+    def C(s: str, *codes: str) -> str:
+        if not use_color:
+            return s
+        return "".join(codes) + s + _RESET
+
+    lines, _, _ = _build_flat_lines(root, C, lambda n: _repo_tail(n, C))
     return "\n".join(lines)
 
 
@@ -289,7 +354,8 @@ class LiveTree:
     no-op, so it is safe to construct anywhere.
     """
 
-    def __init__(self, root: RepoNode, *, use_color: bool = True, stream=None) -> None:
+    def __init__(self, root: RepoNode, *, use_color: bool = True, stream=None,
+                 flat: bool = False) -> None:
         self.stream = stream if stream is not None else sys.stdout
         self.use_color = use_color
         self._lock = threading.Lock()
@@ -304,6 +370,14 @@ class LiveTree:
             return "".join(codes) + s + _RESET
 
         self._C = C
+        self._flat = flat
+        # When flat, pad the url column so branch / ahead-behind / state
+        # align; store the width so update() can match the skeleton.
+        self._url_width = (
+            max((_visible_width(_shorten_url(c.url)) for c in iter_repos(root)), default=0)
+            if flat else 0
+        )
+        builder = _build_flat_lines if flat else _build_lines
 
         if not self._is_tty():
             # Not a real terminal: there is no in-place cursor control, so
@@ -311,9 +385,7 @@ class LiveTree:
             # placeholders) once and leave update() inert. The CLI only uses
             # LiveTree on a TTY, so this path is defensive.
             self._active = False
-            lines, repo_line, repo_base = _build_lines(
-                root, C, lambda n: C("…", _DIM)
-            )
+            lines, repo_line, repo_base = builder(root, C, lambda n: C("…", _DIM))
             self.lines = [_clip_ansi(line, self._width) for line in lines]
             self.repo_line = repo_line
             self.repo_base = repo_base
@@ -322,9 +394,7 @@ class LiveTree:
             return
 
         self._active = True
-        lines, repo_line, repo_base = _build_lines(
-            root, C, lambda n: C("…", _DIM)
-        )
+        lines, repo_line, repo_base = builder(root, C, lambda n: C("…", _DIM))
         self.lines = [_clip_ansi(line, self._width) for line in lines]
         self.repo_line = repo_line
         self.repo_base = repo_base
@@ -357,7 +427,10 @@ class LiveTree:
         i = self.repo_line.get(nid)
         if i is None:
             return
-        text = self.repo_base[nid] + "  " + _repo_tail(node, self._C)
+        cols = _repo_tail_parts(node, self._C)
+        if self._flat and len(cols) >= 4:
+            cols[0] = cols[0] + " " * (self._url_width - _visible_width(cols[0]))
+        text = self.repo_base[nid] + "  " + "  ".join(c for c in cols if c)
         text = _clip_ansi(text, self._width)
         with self._lock:
             self._rewrite(i, text)
