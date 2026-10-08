@@ -6,15 +6,18 @@ fast-forward the ones that are behind upstream.
 ## Install
 
 ```bash
-uv tool install git+https://github.com/devskale/pulli
+uv tool install pulli
 # or
-pipx install git+https://github.com/devskale/pulli
+pipx install pulli
 ```
 
-Both put `pulli` on your PATH (`~/.local/bin/pulli`). To install a local
-checkout instead (development):
+Both put `pulli` on your PATH (`~/.local/bin/pulli`).
+
+To install straight from Git (a specific branch or a dev checkout):
 
 ```bash
+uv tool install git+https://github.com/devskale/pulli
+# or, for a local checkout (development)
 cd ~/code/pulli
 uv tool install --force .
 ```
