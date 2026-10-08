@@ -5,15 +5,30 @@ fast-forward the ones that are behind upstream.
 
 ## Install
 
+### Permanently (on your PATH)
+
 ```bash
 uv tool install pulli
 # or
 pipx install pulli
 ```
 
-Both put `pulli` on your PATH (`~/.local/bin/pulli`).
+Both put `pulli` on your PATH (`~/.local/bin/pulli`). After that just run
+`pulli`.
 
-To install straight from Git (a specific branch or a dev checkout):
+### Once, without installing (`uvx`)
+
+```bash
+uvx pulli
+uvx pulli ~/code
+```
+
+`uvx` fetches `pulli` from PyPI into a temporary cache and runs it
+immediately — no permanent install, no PATH entry. Great for a one-off run
+or to try it out. `uv run --from pulli pulli` does the same thing inside a
+`uv run` context.
+
+### From Git / a dev checkout
 
 ```bash
 uv tool install git+https://github.com/devskale/pulli
