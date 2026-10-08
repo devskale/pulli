@@ -12,5 +12,9 @@ env/
 .ruff_cache/
 .coverage
 
+# Build artifacts
+dist/
+build/
+
 # OS
 .DS_Store

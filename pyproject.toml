@@ -1,6 +1,6 @@
 [project]
 name = "pulli"
-version = "0.2.0"
+dynamic = ["version"]
 description = "Walk a directory tree, show git repos with status, and fast-forward the ones that are behind upstream."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -25,6 +25,9 @@ dev = ["pytest>=8"]
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/pulli/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pulli"]
