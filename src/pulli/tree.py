@@ -262,6 +262,10 @@ def _build_lines(
             repo_base[id(node)] = base
         elif node.is_bare:
             lines.append(f"{prefix}{connector}{name}/  {C(_BARE_NOTE, _DIM)}")
+        elif node.is_symlink:
+            # A link to a plain dir: the label already carries the marker,
+            # and a trailing / would land *after* it — "(symlink)/".
+            lines.append(f"{prefix}{connector}{name}")
         else:
             # plain directory — show with trailing /, no status
             lines.append(f"{prefix}{connector}{C(name + '/', _DIM)}")
@@ -281,18 +285,21 @@ def _build_flat_lines(
     root: RepoNode,
     C,
     tail,
+    repos=None,
 ) -> tuple[list[str], dict[int, int], dict[int, str]]:
     """Build a flat list: one line per repo, no tree structure.
 
-    `tail(node)` renders the status column for a repo node. Returns
+    `tail(node)` renders the status column for a repo node. `repos` overrides
+    the default "all repos sorted by path" — the CLI passes a filtered or
+    attention-sorted list for --behind / --attention. Returns
     `(lines, repo_line, repo_base)` with the same contract as
     `_build_lines`, so a live renderer can swap a repo's status in place.
-    Repos are ordered by display path, so two identical runs are identical.
     """
     lines: list[str] = []
     repo_line: dict[int, int] = {}
     repo_base: dict[int, str] = {}
-    repos = sorted(iter_repos(root), key=lambda n: n.rel)
+    if repos is None:
+        repos = sorted(iter_repos(root), key=lambda n: n.rel)
     if not repos:
         return lines, repo_line, repo_base
     # Pad every path to the widest one so the status columns line up like a
@@ -328,15 +335,18 @@ def render(root: RepoNode, *, use_color: bool = True) -> str:
     return "\n".join(lines)
 
 
-def render_flat(root: RepoNode, *, use_color: bool = True) -> str:
-    """Render a flat list of repos (one line each), not the tree."""
+def render_flat(root: RepoNode, *, use_color: bool = True, repos=None) -> str:
+    """Render a flat list of repos (one line each), not the tree.
+
+    `repos` overrides the default "all repos sorted by path" list.
+    """
 
     def C(s: str, *codes: str) -> str:
         if not use_color:
             return s
         return "".join(codes) + s + _RESET
 
-    lines, _, _ = _build_flat_lines(root, C, lambda n: _repo_tail(n, C))
+    lines, _, _ = _build_flat_lines(root, C, lambda n: _repo_tail(n, C), repos=repos)
     return "\n".join(lines)
 
 

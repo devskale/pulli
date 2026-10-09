@@ -690,3 +690,117 @@ def test_clip_ansi_truncates_to_width_preserving_colors():
     assert clipped.endswith("\x1b[0m")
     # A short line passes through untouched.
     assert _clip_ansi("short", 40) == "short"
+
+
+# ── UX pass: summary, filters, empty state, env, depth ───────────────────
+
+
+def test_cli_tree_prints_summary(lab, capsys):
+    """The flat list ends with a one-line summary — the answer to "how are
+    my repos doing?" without counting lines by hand (clig.dev: display
+    output on success, keep it brief)."""
+    lab.clone("clean")
+    r = lab.clone("behind")
+    lab.advance_upstream()
+    _git(r, "fetch", "-q")
+    assert cli.main(["--no-fetch", str(lab.root)]) == 0
+    out = capsys.readouterr().out
+    # lab.upstream is itself a repo under the root, so: upstream, clean, behind
+    assert "3 repos" in out
+    assert "1 behind" in out
+
+
+def test_cli_tree_no_summary_flag(lab, capsys):
+    lab.clone("r")
+    assert cli.main(["--no-fetch", "--no-summary", str(lab.root)]) == 0
+    out = capsys.readouterr().out
+    assert "repos" not in out.splitlines()[-1]
+
+
+def test_cli_behind_filter(lab, capsys):
+    """--behind lists only repos that need a pull."""
+    lab.clone("current")
+    r = lab.clone("behind")
+    lab.advance_upstream()
+    _git(r, "fetch", "-q")
+    assert cli.main(["--no-fetch", "--behind", str(lab.root)]) == 0
+    out = capsys.readouterr().out
+    assert "behind" in out
+    assert "current" not in out
+
+
+def test_cli_attention_filter(lab, capsys):
+    """--attention lists dirty/diverged/behind repos, current ones not."""
+    lab.clone("current")
+    r = lab.clone("dirty")
+    (r / "a.md").write_text("edit\n")
+    assert cli.main(["--no-fetch", "--attention", str(lab.root)]) == 0
+    out = capsys.readouterr().out
+    assert "dirty" in out
+    assert "current" not in out
+
+
+def test_cli_filter_empty_says_so(lab, capsys):
+    """An empty filter result prints a message, not silence (clig.dev:
+    'It's rare that printing nothing at all is the best default')."""
+    lab.clone("current")
+    assert cli.main(["--no-fetch", "--behind", str(lab.root)]) == 0
+    out = capsys.readouterr().out
+    assert "No repos behind" in out
+
+
+def test_cli_empty_dir_says_so(tmp_path, capsys):
+    """A dir with no repos gets a message, not a blank screen."""
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert cli.main(["--no-fetch", str(empty)]) == 0
+    out = capsys.readouterr().out
+    assert "No repos" in out
+
+
+def test_cli_no_color_env(monkeypatch, lab, capsys):
+    """NO_COLOR (no-color.org) and TERM=dumb disable color without flags."""
+    lab.clone("r")
+    monkeypatch.setenv("NO_COLOR", "1")
+    rc = cli.main([str(lab.root)])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "\x1b[" not in out
+
+
+def test_cli_term_dumb_disables_color(monkeypatch, lab, capsys):
+    lab.clone("r")
+    monkeypatch.setenv("TERM", "dumb")
+    rc = cli.main([str(lab.root)])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "\x1b[" not in out
+
+
+def test_max_depth_limits_symlink_expansion(lab):
+    """--max-depth must bound the symlink pass too, not just the plain
+    walk — links used to expand one level beyond the limit. At depth 0 the
+    plain walk shows no children, so the link pass must not either."""
+    outside = lab.root.parent / "elsewhere"
+    (outside / "deep").mkdir(parents=True)
+    _git(outside, "init", "-q", ".")
+    os.symlink(outside, lab.root / "link")
+    tree = discover(lab.root, max_depth=0)
+    assert tree.children == []  # depth 0: the root is the only level
+    # and at depth 1 the link appears, but its children do not
+    tree1 = discover(lab.root, max_depth=1)
+    link = [n for n in tree1.children if n.name == "link"][0]
+    assert link.is_symlink
+    assert link.children == []
+
+
+def test_tree_renders_symlink_without_trailing_slash_after_marker(lab):
+    """A symlink to a plain dir must not render `(symlink)/` — the slash
+    belongs to directories, and it landed after the marker."""
+    target = lab.root.parent / "plain-target"
+    target.mkdir(exist_ok=True)
+    os.symlink(target, lab.root / "link")
+    tree = discover(lab.root)
+    out = render(tree, use_color=False)
+    assert "(symlink)/" not in out
+    assert "link -> " in out

@@ -58,11 +58,19 @@ connectors).
 | flag | effect |
 | --- | --- |
 | `--tree` | show the full directory tree instead of the flat repo list |
+| `--behind` | only the repos that need a pull |
+| `--attention` | only dirty / diverged / behind / broken repos — what needs you first |
+| `--no-summary` | omit the one-line summary under the list |
 | `--no-fetch` | don't fetch remotes before showing status |
 | `--no-symlinks` | don't follow symlinks (default: follow, marked) |
 | `--max-depth N` | limit recursion (default: 50) |
-| `--no-color` | disable ANSI colours (also implied off a TTY) |
+| `--no-color` | disable ANSI colours (also implied off a TTY, by `NO_COLOR`, or `TERM=dumb`) |
 | `--json` | one JSON object per line, for scripts |
+
+`pulli --examples` prints a cheat sheet of common invocations.
+
+The list ends with a one-line summary (`56 repos · 16 behind · 1 diverged …`),
+so a scan answers "how are my repos doing?" without counting lines.
 
 Fetches run in parallel by default, so ahead/behind is current, and each is
 bounded by a short timeout — if you're offline (on a train) unreachable

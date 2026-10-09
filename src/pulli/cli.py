@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -31,6 +32,34 @@ _TREE_FLAGS = {
 _PULL_FLAGS = {"--no-color", "--dry-run", "--json", "--no-fetch"}
 
 SUBCOMMANDS = ("tree", "pull")
+
+class _ExamplesAction(argparse.Action):
+    """Print the examples verbatim and exit.
+
+    argparse's built-in version action routes the text through its
+    HelpFormatter, which re-wraps and collapses the newlines — one long
+    line. Printing directly keeps one example per line.
+    """
+
+    def __init__(self, option_strings, dest, **kwargs):
+        super().__init__(option_strings, dest, nargs=0, **kwargs)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        print(_EXAMPLES)
+        parser.exit()
+
+
+# `pulli --examples` — clig.dev: "Lead with examples. Users tend to use
+# examples over other forms of documentation, so show them first."
+_EXAMPLES = """\
+examples:
+  pulli                          status of all repos under the current dir
+  pulli ~/code                   status of all repos under ~/code
+  pulli --behind ~/code          only the repos that need a pull
+  pulli --attention ~/code       dirty, diverged, behind — what needs you first
+  pulli pull ~/code              fast-forward the repos that are behind
+  pulli pull --dry-run ~/code    show what would be pulled, change nothing
+  pulli --json ~/code            one JSON object per line, for scripts"""
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -90,6 +119,21 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Show the full directory tree instead of a flat repo list.",
     )
+    tree_p.add_argument(
+        "--behind",
+        action="store_true",
+        help="Only repos that are behind upstream (need a pull).",
+    )
+    tree_p.add_argument(
+        "--attention",
+        action="store_true",
+        help="Only repos that need you: dirty, diverged, behind, broken.",
+    )
+    tree_p.add_argument(
+        "--no-summary",
+        action="store_true",
+        help="Omit the one-line summary under the list.",
+    )
 
     # `pulli pull` — pull repos that are behind.
     pull_p = sub.add_parser("pull", help="Pull repos that are behind upstream.")
@@ -117,6 +161,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     p.add_argument("-V", "--version", action="version", version=f"pulli {__version__}")
+    p.add_argument(
+        "--examples",
+        action=_ExamplesAction,
+        help="Show usage examples.",
+    )
     return p
 
 
@@ -131,7 +180,7 @@ def _inject_tree(argv: list[str]) -> list[str]:
     if not argv:
         return ["tree"]
     first = argv[0]
-    if first in SUBCOMMANDS or first in ("-V", "--version", "-h", "--help"):
+    if first in SUBCOMMANDS or first in ("-V", "--version", "-h", "--help", "--examples"):
         return argv
     # Anything that isn't the `pull` subcommand falls through to `tree`.
     return ["tree", *argv]
@@ -150,6 +199,12 @@ def _use_color(args) -> bool:
     # Explicit --no-color wins; otherwise colour only on a TTY, and never
     # when --json (a JSON consumer does not want escape codes in strings).
     if args.no_color or getattr(args, "json", False):
+        return False
+    # no-color.org convention: NO_COLOR set to any non-empty value disables
+    # color. TERM=dumb marks a terminal that cannot handle the sequences.
+    if os.environ.get("NO_COLOR"):
+        return False
+    if os.environ.get("TERM") == "dumb":
         return False
     return sys.stdout.isatty()
 
@@ -181,6 +236,50 @@ def _check_root(root: Path) -> int | None:
     return None
 
 
+def _needs_attention(node) -> bool:
+    """A repo the user should look at: broken, busy, diverged, behind, or
+    dirty. Mirrors pull.py's bucket order so tree and pull never disagree
+    about what "needs attention" means."""
+    if node.error or node.operation:
+        return True
+    if node.behind and node.ahead:
+        return True  # diverged
+    if node.behind:
+        return True
+    return bool(node.dirty)
+
+
+def _summary(repos, use_color: bool) -> str:
+    """One line under the list: the answer to "how are my repos doing?",
+    without counting lines by hand. Same buckets as pull.py's summary."""
+    n = len(repos)
+    behind = sum(1 for r in repos if r.behind and not r.ahead)
+    diverged = sum(1 for r in repos if r.behind and r.ahead)
+    ahead = sum(1 for r in repos if r.ahead and not r.behind)
+    dirty = sum(1 for r in repos if r.dirty and not (r.behind or r.ahead))
+    offline = sum(1 for r in repos if r.fetch_failed)
+    broken = sum(1 for r in repos if r.error)
+    parts = [f"{n} repos"]
+    if behind:
+        parts.append(f"{behind} behind")
+    if diverged:
+        parts.append(f"{diverged} diverged")
+    if ahead:
+        parts.append(f"{ahead} ahead")
+    if dirty:
+        parts.append(f"{dirty} dirty")
+    if offline:
+        parts.append(f"{offline} offline")
+    if broken:
+        parts.append(f"{broken} broken")
+    text = " · ".join(parts)
+    if behind or diverged or broken:
+        # Something needs a human — make the line findable at a glance.
+        hint = f"{text} — pulli pull would update {behind} of them"
+        return f"\x1b[1m{hint}\x1b[0m" if use_color else hint
+    return text
+
+
 def _run_tree(args) -> int:
     root = _root_arg(args)
     if (rc := _check_root(root)) is not None:
@@ -208,7 +307,10 @@ def _run_tree(args) -> int:
 
     use_color = _use_color(args)
     flat = not args.tree
-    if sys.stdout.isatty():
+    # Filters decide on fetched status, so they cannot stream: the skeleton
+    # is printed before anything is known. Run the batch path instead.
+    filtered = bool(getattr(args, "behind", False) or getattr(args, "attention", False))
+    if sys.stdout.isatty() and not filtered:
         # Stream: print the skeleton immediately, then fill each repo's
         # status line in as it becomes ready — no blank-screen wait.
         live = LiveTree(tree, use_color=use_color, flat=flat)
@@ -219,13 +321,38 @@ def _run_tree(args) -> int:
             fetch=not args.no_fetch,
             on_done=live.update,
         )
+        if flat and not args.no_summary:
+            # The live tree is done rewriting lines; the summary lands
+            # below it, where the eye ends up anyway.
+            print()
+            print(_summary(list(iter_repos(tree)), use_color))
     else:
         # Not a terminal: no in-place cursor control. Do the work, then
         # print the complete output once (byte-identical to before).
         if not args.no_fetch:
             fetch_all(repos, quiet=True, use_color=use_color)
         collect_status(tree)
-        print(render_flat(tree, use_color=use_color) if flat else render(tree, use_color=use_color))
+        if flat:
+            shown = list(iter_repos(tree))
+            if args.behind:
+                shown = [r for r in shown if r.behind and not r.ahead]
+            elif args.attention:
+                shown = [r for r in shown if _needs_attention(r)]
+            if args.attention:
+                shown.sort(key=lambda n: (not n.behind, n.rel))
+            if not shown:
+                # clig.dev: "It's rare that printing nothing at all is the
+                # best default behavior." Say what was searched and that it
+                # is empty — silence reads as a bug, not as a result.
+                what = "behind" if args.behind else "needing attention"
+                print(f"No repos {what} under {args.link_root}")
+                return 0
+            print(render_flat(tree, use_color=use_color, repos=shown))
+            if not args.no_summary:
+                print()
+                print(_summary(shown, use_color))
+        else:
+            print(render(tree, use_color=use_color))
     return 0
 
 

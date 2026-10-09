@@ -257,6 +257,11 @@ def _walk_links(
     is backwards. Walking links last means a real directory always wins, and
     a link is only shown when nothing else reaches its target.
     """
+    # As in _walk: a node deeper than max_depth is not expanded. The link
+    # pass must respect the same limit as the plain walk, or --max-depth
+    # silently stops applying the moment a symlink is followed.
+    if node.depth + 1 > max_depth:
+        return
     try:
         entries = sorted(os.listdir(real_dir), key=lambda s: s.lower())
     except OSError:
