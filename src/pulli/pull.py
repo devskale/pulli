@@ -63,15 +63,18 @@ def _fmt_ahead_behind(node: RepoNode) -> str:
 
 
 def _fmt_dirty(node: RepoNode, use_color: bool) -> str:
-    """'dirty 2 (a.md, b.txt)' — count + file names (max 4, then +N more)."""
+    """'dirty 2 (a.md, b.txt)' — count + file names (max 4, then +N more).
+    Untracked-only dirty says so: those files cannot conflict with a pull,
+    which is what the reader needs to know about them."""
     files = node.dirty_files or []
     if not files:
         return _color("dirty", _YELLOW, use_color)
     shown = files[:4]
     more = len(files) - len(shown)
     listing = ", ".join(shown) + (f", +{more} more" if more > 0 else "")
+    label = "untracked" if node.untracked_only else "dirty"
     return (
-        f"{_color('dirty', _YELLOW, use_color)} {len(files)} "
+        f"{_color(label, _YELLOW, use_color)} {len(files)} "
         f"({_color(listing, _DIM, use_color)})"
     )
 
@@ -88,7 +91,7 @@ def _classify(node: RepoNode) -> str:
         return "current"
     if behind and ahead:
         return "diverged"
-    if node.dirty:
+    if node.dirty and not node.untracked_only:
         return "dirty"
     if behind:
         return "pullable"
@@ -138,7 +141,8 @@ def _report(node: RepoNode, kind: str, *, use_color: bool, dry_run: bool) -> str
     elif kind == "dirty":
         line = (
             f"  {C('◐', _YELLOW, use_color)} {rel}  {ab}  "
-            f"{_fmt_dirty(node, use_color)}, skipping pull"
+            f"{_fmt_dirty(node, use_color)}, skipping pull — "
+            f"{C('commit or stash, then pulli pull again', _DIM, use_color)}"
         )
     elif kind == "ahead":
         line = f"  {C('↑', _CYAN, use_color)} {rel}  {C(f'↑{node.ahead} ahead (not pushed)', _CYAN, use_color)}"
@@ -213,9 +217,12 @@ def pull(
         print()
         print(_color("Dry run — no pulls performed.", _BOLD, use_color))
         for node in pullable:
+            note = ""
+            if node.dirty and node.untracked_only:
+                note = _color("  (untracked files only — safe)", _DIM, use_color)
             print(
                 f"  {_color('↓', _GREEN, use_color)} {node.rel}  "
-                f"{_fmt_ahead_behind(node)}  {_color('would pull', _GREEN, use_color)}"
+                f"{_fmt_ahead_behind(node)}  {_color('would pull', _GREEN, use_color)}{note}"
             )
     else:
         for node in pullable:
@@ -224,9 +231,12 @@ def pull(
             )
             if rc == 0:
                 pulled.append(node)
+                note = ""
+                if node.dirty and node.untracked_only:
+                    note = _color("  (untracked files kept)", _DIM, use_color)
                 print(
                     f"  {_color('✓', _GREEN, use_color)} {node.rel}  "
-                    f"{_fmt_ahead_behind(node)}  pulled"
+                    f"{_fmt_ahead_behind(node)}  pulled{note}"
                 )
             else:
                 reason = _first_meaningful_line(stderr or stdout) or f"exit {rc}"

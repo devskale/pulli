@@ -404,8 +404,16 @@ def _collect_one_locked(node: RepoNode, repo: Path, env: dict[str, str]) -> None
     # dirty? porcelain status; parse the file paths for display.
     rc, out, _ = run_git(repo, "status", "--porcelain", env=env)
     if rc == 0:
-        node.dirty_files = [_porcelain_path(l) for l in out.splitlines() if l.strip()]
+        lines = [l for l in out.splitlines() if l.strip()]
+        node.dirty_files = [_porcelain_path(l) for l in lines]
         node.dirty = bool(node.dirty_files)
+        # Untracked-only dirty is safe to fast-forward: git itself refuses
+        # a pull only when a *tracked* file would be overwritten. A repo
+        # whose changes are all `??` can be pulled without losing work —
+        # and pulli skipping it anyway just leaves it ever further behind.
+        node.untracked_only = node.dirty and all(
+            l.startswith("??") for l in lines
+        )
     else:
         node.dirty = None
         node.dirty_files = []

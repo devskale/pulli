@@ -101,9 +101,10 @@ corrupt work to make progress.
 | repo state | action |
 | --- | --- |
 | behind upstream, clean | `git pull --ff-only` |
+| behind upstream, **untracked files only** | `git pull --ff-only` — untracked files cannot conflict with a fast-forward, so they are kept and the repo is pulled (marked `untracked N` instead of `dirty N`) |
 | up to date | nothing (silent) |
 | ahead only | nothing — local commits need a *push*, not a pull |
-| uncommitted changes | skipped, reported |
+| uncommitted changes (tracked) | skipped, with the way out: *commit or stash, then pulli pull again* |
 | diverged (ahead **and** behind) | skipped — a fast-forward is impossible; merge or rebase is your call |
 | merge / rebase / bisect in progress | skipped, reported — never touched |
 | no upstream (detached HEAD, no remote) | nothing to pull |

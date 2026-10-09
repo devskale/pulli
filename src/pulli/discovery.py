@@ -49,6 +49,7 @@ class RepoNode:
     behind: int | None = None
     dirty: bool | None = None
     dirty_files: list[str] = field(default_factory=list)  # paths from status --porcelain
+    untracked_only: bool = False  # dirty, but only untracked files — safe to fast-forward
     upstream: str | None = None
     url: str = ""  # remote url (credentials never stored — scrubbed at render)
     operation: str | None = None  # "merge in progress", "rebase in progress", …

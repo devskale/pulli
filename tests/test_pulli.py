@@ -804,3 +804,58 @@ def test_tree_renders_symlink_without_trailing_slash_after_marker(lab):
     out = render(tree, use_color=False)
     assert "(symlink)/" not in out
     assert "link -> " in out
+
+
+# ── untracked-only dirty is pullable; skips say what to do ───────────────
+
+
+def test_untracked_only_repo_is_pulled(lab):
+    """Untracked files cannot conflict with a fast-forward — git itself
+    refuses only when a tracked file would be overwritten. A repo whose
+    changes are all `??` must be pulled, not skipped forever."""
+    r = lab.clone("scratch")
+    lab.advance_upstream()
+    _git(r, "fetch", "-q")
+    (r / "notes.md").write_text("local scratch\n")
+    (r / ".tmp").mkdir()
+    (r / ".tmp" / "cache.bin").write_text("x")
+    kinds, rc, out = actions(lab.root, fetch=False)
+    # The helper re-classifies after the run, so a *pulled* repo reads as
+    # current — the decision under test is in the output and the worktree.
+    assert "untracked files kept" in out
+    assert (r / "b.md").exists()          # the pull actually happened
+    assert (r / "notes.md").exists()     # the scratch file survived it
+    assert rc == 0
+    assert rc == 0
+    assert "untracked files kept" in out
+
+
+def test_tracked_dirty_repo_is_still_skipped(lab):
+    """A modified tracked file CAN conflict with a pull — still a skip."""
+    r = lab.clone("work")
+    lab.advance_upstream()
+    _git(r, "fetch", "-q")
+    (r / "a.md").write_text("edited\n")
+    kinds, rc, out = actions(lab.root, fetch=False)
+    assert kinds["work"] == "dirty"
+    assert "skipping pull" in out
+
+
+def test_dirty_skip_tells_you_what_to_do(lab):
+    """A skip without a hint is a dead end (clig.dev: suggest what to run
+    next). The dirty skip names the way out."""
+    r = lab.clone("work")
+    lab.advance_upstream()
+    _git(r, "fetch", "-q")
+    (r / "a.md").write_text("edited\n")
+    _, _, out = actions(lab.root, fetch=False)
+    assert "commit or stash" in out
+
+
+def test_dry_run_marks_untracked_only_as_safe(lab):
+    r = lab.clone("scratch")
+    lab.advance_upstream()
+    _git(r, "fetch", "-q")
+    (r / "notes.md").write_text("scratch\n")
+    _, _, out = actions(lab.root, fetch=False, dry_run=True)
+    assert "untracked files only — safe" in out
