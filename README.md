@@ -150,7 +150,7 @@ Would pull 1 repo(s).
 ### Flat list (default)
 
 ```
-clones/pi  earendil-works/pi  main  ↓0 ↑0  ● clean
+clones/pi  earendil-works/pi  main  ↓0 ↑0  ●
 clones/gogcli  openclaw/gogcli  main  ↓0 ↑0  ◐ dirty 5
 kontext.one  devskale/kontext.one  main  ↓0 ↑0  ◐ dirty 5
 ```
@@ -163,13 +163,13 @@ sorted by path, so a run is reproducible.
 ```
 ~/code
 ├── clones/
-│   ├── herdr    ogulcancelik/herdr    master  ↓0 ↑0  ● clean
-│   ├── pi       earendil-works/pi     main    ↓33 ↑0 ● clean
+│   ├── herdr    ogulcancelik/herdr    master  ↓0 ↑0  ●
+│   ├── pi       earendil-works/pi     main    ↓33 ↑0 ●
 │   └── gogcli   openclaw/gogcli       main    ↓0 ↑0  ◐ dirty 5
 ├── handoffs -> code/skaleshare/handoffs (alias)
 ├── kontext.one  devskale/kontext.one  main    ↓0 ↑0  ◐ dirty 5
-│   ├── klark0     devskale/klark0      dev     ↓0 ↑0  ● clean
-│   └── python-utils (submodule)                   ↓0 ↑0  ● clean
+│   ├── klark0     devskale/klark0      dev     ↓0 ↑0  ●
+│   └── python-utils (submodule)                   ↓0 ↑0  ●
 └── backups/
     └── model-proxy.git/  (bare repo — nothing to pull)
 ```
@@ -179,13 +179,13 @@ sorted by path, so a run is reproducible.
 ```
 ~/code
 ├── clones/
-│   ├── herdr    ogulcancelik/herdr    master  ↓0 ↑0  ● clean
-│   ├── pi       earendil-works/pi     main    ↓33 ↑0 ● clean
+│   ├── herdr    ogulcancelik/herdr    master  ↓0 ↑0  ●
+│   ├── pi       earendil-works/pi     main    ↓33 ↑0 ●
 │   └── gogcli   openclaw/gogcli       main    ↓0 ↑0  ◐ dirty 5
 ├── handoffs -> code/skaleshare/handoffs (alias)
 ├── kontext.one  devskale/kontext.one  main    ↓0 ↑0  ◐ dirty 5
-│   ├── klark0     devskale/klark0      dev     ↓0 ↑0  ● clean
-│   └── python-utils (submodule)                   ↓0 ↑0  ● clean
+│   ├── klark0     devskale/klark0      dev     ↓0 ↑0  ●
+│   └── python-utils (submodule)                   ↓0 ↑0  ●
 └── backups/
     └── model-proxy.git/  (bare repo — nothing to pull)
 ```
@@ -193,7 +193,7 @@ sorted by path, so a run is reproducible.
 - **`↓N ↑M`** — commits behind / ahead of upstream; `·  ·` means there is
   no upstream to compare against (a fresh `git init`, a detached HEAD, a
   remote-less clone), which is not the same as "in sync"
-- **`●` clean / `◐` dirty N / `✗` error** — `◐ offline` means the fetch
+- **`●` clean (default) / `◐` dirty N / `✗` error** — `◐ offline` means the fetch
   failed, so the numbers may be stale
 - **symlinks** are followed by default and marked; one whose target is also
   reachable under its real name is shown as an `(alias)` and is never a

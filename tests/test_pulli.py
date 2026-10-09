@@ -500,15 +500,16 @@ def test_first_meaningful_line_skips_hints():
 
 
 def test_render_marks_states(lab):
-    lab.clone("clean")
+    lab.clone("ok")
     r2 = lab.clone("dirty")
     (r2 / "a.md").write_text("edit\n")
     tree = discover(lab.root)
     set_rels(tree)
     collect_status(tree)
     out = render(tree, use_color=False)
-    assert "clean" in out
+    assert "●" in out
     assert "dirty" in out
+    assert "clean" not in out
 
 
 def test_no_upstream_renders_placeholder(lab):
@@ -525,7 +526,7 @@ def test_no_upstream_renders_placeholder(lab):
 def test_render_flat_lists_only_repos(lab):
     """The default output is a flat list of repos — no tree scaffolding, no
     plain directories, no pruned dirs."""
-    lab.clone("clean")
+    lab.clone("ok")
     (lab.root / "plaindir").mkdir()          # a plain dir must NOT appear
     (lab.root / "node_modules" / "x").mkdir(parents=True)  # pruned, no repo
     tree = discover(lab.root)
@@ -533,7 +534,8 @@ def test_render_flat_lists_only_repos(lab):
     collect_status(tree)
     out = render_flat(tree, use_color=False)
     lines = out.splitlines()
-    assert "clean" in out
+    assert "●" in out
+    assert "clean" not in out
     assert "plaindir" not in out
     assert "node_modules" not in out
     assert not any("├──" in l or "└──" in l for l in lines)  # no connectors

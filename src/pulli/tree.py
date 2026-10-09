@@ -4,17 +4,19 @@ Layout:
 
   ~/code
   ├── clones/
-  │   ├── herdr  ogulcancelik/herdr  master  ↓0 ↑0  ● clean
+  │   ├── herdr  ogulcancelik/herdr  master  ↓0 ↑0  ●
   │   ├── pi     earendil-works/pi   main    ↓5 ↑0  ◐ dirty 2
-  │   └── ghostty  ghostty-org/ghostty  main  ↓0 ↑0  ● clean
-  ├── kontext.one/  devskale/kontext.one  main  ↓0 ↑3  ● clean
+  │   └── ghostty  ghostty-org/ghostty  main  ↓0 ↑0  ●
+  ├── kontext.one/  devskale/kontext.one  main  ↓0 ↑3  ●
   │   ├── klark0
   │   └── python-utils
   ...
 
 Conventions:
   - Plain (non-repo) directories are shown with a trailing `/` and no status.
-  - Repos get a status line: remote, branch, ahead/behind, clean/dirty.
+  - Repos get a status line: remote, branch, ahead/behind, state glyph.
+    Clean is the unmarked default (just the green dot); deviations
+    (dirty, offline, operation) are spelled out.
   - A repo with no upstream (fresh init, detached HEAD, no remote) shows
     `·  ·` instead of a misleading `↓0 ↑0`.
   - A repo whose fetch failed shows `offline (stale)` — the numbers may be
@@ -143,7 +145,7 @@ def _shorten_url(url: str) -> str:
 
 
 def _status_glyph(node: RepoNode) -> tuple[str, str]:
-    """Return (glyph, color) for the clean/dirty/error state."""
+    """Return (glyph, color) for the ok/dirty/error state."""
     if node.error:
         return "✗", _RED
     if node.dirty or node.operation:
@@ -189,7 +191,7 @@ def _repo_tail_parts(node: RepoNode, C) -> list[str]:
         state = (
             C(f"{glyph} dirty {len(node.dirty_files)}", _YELLOW)
             if node.dirty
-            else C(f"{glyph} clean", gcolor)
+            else C(glyph, gcolor)
         )
 
     parts.append(state)
