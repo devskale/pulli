@@ -859,3 +859,91 @@ def test_dry_run_marks_untracked_only_as_safe(lab):
     (r / "notes.md").write_text("scratch\n")
     _, _, out = actions(lab.root, fetch=False, dry_run=True)
     assert "untracked files only — safe" in out
+
+
+# ── update check: cached, once a day, never in the way ──────────────────
+
+
+def test_is_newer_compares_versions():
+    from pulli.update import _is_newer
+
+    assert _is_newer("0.2.4") is True         # newer than 0.2.3
+    assert _is_newer("0.2.2") is False        # older
+    assert _is_newer("9.9.9") is True
+    assert _is_newer("0.10.0") is True         # 10 > 9 numerically, not lexically
+    assert _is_newer("0.2.3") is False         # equal is not newer
+    assert _is_newer(None) is False             # offline is never "newer"
+    assert _is_newer("") is False
+
+
+def test_update_cache_roundtrip(tmp_path, monkeypatch):
+    """The cache is written once and read while fresh; a stale cache reads
+    as empty so the next run refreshes it."""
+    from pulli import update
+
+    monkeypatch.setenv("PULLI_CACHE_DIR", str(tmp_path))
+    update._write_cache("1.2.3")
+    latest = update._cached_latest()
+    assert latest == "1.2.3"
+    # force staleness: rewrite the JSON with checked_at = 0
+    (tmp_path / "update.json").write_text(
+        (tmp_path / "update.json").read_text().replace(
+            '"checked_at": ', '"checked_at_x": 0, "checked_at": '
+        )
+    )
+    # fresh again -> not stale; make it stale by backdating checked_at
+    import json as _json
+    data = _json.loads((tmp_path / "update.json").read_text())
+    data["checked_at"] = 0
+    (tmp_path / "update.json").write_text(_json.dumps(data))
+    assert update._cached_latest() is None
+
+
+def test_update_hint_offline_is_silent(tmp_path, monkeypatch):
+    """A failed check must never print anything — an offline machine gets
+    no noise, and the command's output stays byte-clean."""
+    from pulli import update
+
+    monkeypatch.setenv("PULLI_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr(update, "_fetch_latest", lambda: None)
+    assert update.update_hint(sync=True) is None
+
+
+def test_update_hint_uses_fresh_cache(tmp_path, monkeypatch):
+    from pulli import update
+
+    monkeypatch.setenv("PULLI_CACHE_DIR", str(tmp_path))
+    update._write_cache("9.9.9")
+    # fetch would fail — the hint must come from the cache, not the net
+    monkeypatch.setattr(update, "_fetch_latest", lambda: None)
+    hint = update.update_hint(sync=True)
+    assert hint is not None and "9.9.9" in hint
+
+
+def test_version_prints_hint_when_update_exists(tmp_path, monkeypatch, capsys):
+    """`pulli --version` answers both questions: what am I, and am I old?"""
+    import pytest
+    from pulli import update
+    from pulli import __version__ as ver
+
+    monkeypatch.setenv("PULLI_CACHE_DIR", str(tmp_path))
+    update._write_cache("9.9.9")
+    # argparse's exit() raises SystemExit(0) — the version action's contract
+    with pytest.raises(SystemExit) as e:
+        cli.main(["--version"])
+    assert e.value.code == 0
+    out = capsys.readouterr()
+    assert f"pulli {ver}" in out.out
+    assert "9.9.9" in (out.out + out.err)
+
+
+def test_update_check_up_to_date(tmp_path, monkeypatch, capsys):
+    """`pulli update` against PyPI's real answer (or a stub): up to date
+    means exit 0 and a clear message, not silence."""
+    from pulli import update
+
+    monkeypatch.setenv("PULLI_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr(update, "_fetch_latest", lambda: "0.2.1")
+    assert cli.main(["update", "--check"]) == 0
+    out = capsys.readouterr().out
+    assert "up to date" in out

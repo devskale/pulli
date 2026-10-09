@@ -14,10 +14,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
 from . import __version__
+from .update import update_hint
 from .discovery import discover, iter_repos, set_rels
 from .pull import pull
 from .status import collect_status, fetch_all, fetch_and_status
@@ -31,7 +33,26 @@ _TREE_FLAGS = {
 }
 _PULL_FLAGS = {"--no-color", "--dry-run", "--json", "--no-fetch"}
 
-SUBCOMMANDS = ("tree", "pull")
+SUBCOMMANDS = ("tree", "pull", "update")
+
+class _VersionAction(argparse.Action):
+    """Print the version, plus an update hint when one exists.
+
+    The built-in version action prints a static string; this one asks the
+    update module (synchronously — asking for the version is the one place
+    a 3s PyPI check is worth the wait) and appends the hint below it.
+    """
+
+    def __init__(self, option_strings, dest, **kwargs):
+        super().__init__(option_strings, dest, nargs=0, **kwargs)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        print(f"pulli {__version__}")
+        hint = update_hint(sync=True)
+        if hint:
+            print(hint, file=sys.stderr)
+        parser.exit()
+
 
 class _ExamplesAction(argparse.Action):
     """Print the examples verbatim and exit.
@@ -81,8 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
         )
         sp.add_argument(
             "-V", "--version",
-            action="version",
-            version=f"pulli {__version__}",
+            action=_VersionAction,
         )
         sp.add_argument(
             "--no-color",
@@ -160,7 +180,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum recursion depth (default: 50).",
     )
 
-    p.add_argument("-V", "--version", action="version", version=f"pulli {__version__}")
+    # `pulli update` — self-update.
+    upd_p = sub.add_parser("update", help="Update pulli to the latest PyPI release.")
+    upd_p.add_argument(
+        "--check",
+        action="store_true",
+        help="Only show what would be updated, change nothing.",
+    )
+
+    p.add_argument("-V", "--version", action=_VersionAction)
     p.add_argument(
         "--examples",
         action=_ExamplesAction,
@@ -192,7 +220,50 @@ def main(argv: list[str] | None = None) -> int:
     )
     if args.command == "pull":
         return _run_pull(args)
+    if args.command == "update":
+        return _run_update(args)
     return _run_tree(args)
+
+
+def _run_update(args) -> int:
+    """Self-update: refresh the version cache, then upgrade via uv/pipx.
+
+    The installer that owns the binary decides the upgrade command — uv
+    tool installs upgrade differently than pipx or a raw pip install, and
+    guessing wrong would "succeed" while changing nothing.
+    """
+    from .update import _fetch_latest, _is_newer
+
+    latest = _fetch_latest()
+    if latest is None:
+        print("pulli: could not reach PyPI — check your connection and retry.", file=sys.stderr)
+        return 1
+    if not _is_newer(latest):
+        print(f"pulli {__version__} is up to date (PyPI: {latest}).")
+        return 0
+    if args.check:
+        print(f"pulli {__version__} → {latest} would be installed. Run: pulli update")
+        return 0
+
+    exe = Path(sys.argv[0]).resolve()
+    candidates: list[tuple[str, list[str]]] = []
+    if ".local/bin" in str(exe) or True:  # uv tool and pipx both live here
+        candidates.append(("uv", ["uv", "tool", "upgrade", "pulli"]))
+        candidates.append(("pipx", ["pipx", "upgrade", "pulli"]))
+    import shutil
+    for name, cmd in candidates:
+        if shutil.which(cmd[0]):
+            print(f"pulli {__version__} → {latest} (via {name})")
+            rc = subprocess.run(cmd).returncode
+            if rc == 0:
+                print(f"Updated to pulli {latest}.")
+            return rc
+    print(
+        f"pulli {latest} is available, but no uv/pipx found. Update manually, e.g.:\n"
+        f"  pip install --upgrade pulli",
+        file=sys.stderr,
+    )
+    return 1
 
 
 def _use_color(args) -> bool:

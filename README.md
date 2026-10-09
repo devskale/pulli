@@ -82,6 +82,20 @@ frozen. The spinner only appears on a real terminal; when output is piped
 or captured (`pulli | less`, CI, scripts) it is a no-op and the output stays
 byte-clean. `--no-color` disables the spinner's colouring too.
 
+### `update`
+
+Checks PyPI and upgrades pulli itself — the installer that owns the binary
+(`uv tool` or `pipx`) decides the upgrade command.
+
+```bash
+pulli update            # upgrade to the latest PyPI release
+pulli update --check   # show what would be updated, change nothing
+```
+
+`pulli --version` also reports when a newer release exists. The check hits
+PyPI at most once a day (cached in the platform cache dir), never touches
+the output of normal runs, and is silent when offline.
+
 ### `pull`
 
 | flag | effect |
