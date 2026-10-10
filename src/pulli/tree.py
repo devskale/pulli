@@ -37,32 +37,31 @@ keeps the credential scrubbing in exactly one place.
 """
 from __future__ import annotations
 
-import re
 import shutil
 import sys
 import threading
 
 from .discovery import RepoNode, iter_repos
-
-# ANSI colors — kept minimal; degrade gracefully on non-TTY (we strip them).
-_RESET = "\x1b[0m"
-_DIM = "\x1b[2m"
-_BOLD = "\x1b[1m"
-_GREEN = "\x1b[32m"
-_YELLOW = "\x1b[33m"
-_RED = "\x1b[31m"
-_CYAN = "\x1b[36m"
-_MAGENTA = "\x1b[35m"
+from .style import (
+    BOLD,
+    CYAN,
+    DIM,
+    GREEN,
+    MAGENTA,
+    RED,
+    RESET,
+    YELLOW,
+    Colorizer,
+    highlight_line,
+    visible_width,
+)
 
 _BARE_NOTE = "(bare repo — nothing to pull)"
-
-# Matches a single ANSI SGR escape sequence (color / style codes).
-_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def _visible_width(s: str) -> int:
     """Visible column count, ignoring ANSI escape sequences."""
-    return len(_ANSI_RE.sub("", s))
+    return visible_width(s)
 
 
 def _clip_ansi(s: str, width: int) -> str:
@@ -105,7 +104,7 @@ def _clip_ansi(s: str, width: int) -> str:
             vis += 1
             i += 1
     if truncated:
-        out.append(_RESET)
+        out.append(RESET)
     return "".join(out)
 
 
@@ -147,10 +146,10 @@ def _shorten_url(url: str) -> str:
 def _status_glyph(node: RepoNode) -> tuple[str, str]:
     """Return (glyph, color) for the ok/dirty/error state."""
     if node.error:
-        return "✗", _RED
+        return "✗", RED
     if node.dirty or node.operation:
-        return "◐", _YELLOW
-    return "●", _GREEN
+        return "◐", YELLOW
+    return "●", GREEN
 
 
 def _ahead_behind(node: RepoNode, C=lambda s, *c: s) -> str:
@@ -166,27 +165,13 @@ def _ahead_behind(node: RepoNode, C=lambda s, *c: s) -> str:
     if not node.upstream:
         return "·  ·"
     behind, ahead = node.behind or 0, node.ahead or 0
-    b = C(f"↓{behind}", _CYAN, _BOLD) if behind else f"↓{behind}"
-    a = C(f"↑{ahead}", _CYAN, _BOLD) if ahead else f"↑{ahead}"
+    b = C(f"↓{behind}", CYAN, BOLD) if behind else f"↓{behind}"
+    a = C(f"↑{ahead}", CYAN, BOLD) if ahead else f"↑{ahead}"
     return f"{b} {a}"
 
 
-def _highlight_line(line: str, color: str = _CYAN) -> str:
-    """Color-wrap a whole line, surviving nested SGR resets.
-
-    Inner resets (e.g. the count's own cyan+bold) would end the outer color
-    mid-line and make the line render two-tone; re-apply the color after
-    each reset so the line stays one color throughout.
-    Returns the input unchanged when it carries no ANSI codes (color off)
-    — nothing to highlight then.
-    """
-    if "\x1b[" not in line:
-        return line
-    # Drop dim segments: dim-color renders darker than the color, which
-    # would split the highlighted line into bright and dark halves. The
-    # point of the highlight is one uniform color.
-    line = line.replace(_DIM, "")
-    return color + line.replace(_RESET, _RESET + color) + _RESET
+def _highlight_line(line: str, color: str = CYAN) -> str:
+    return highlight_line(line, color)
 
 
 def _line_color(node: RepoNode) -> str | None:
@@ -202,9 +187,9 @@ def _line_color(node: RepoNode) -> str | None:
     if node.error:
         return None
     if node.behind:
-        return _CYAN
+        return CYAN
     if node.dirty and not node.untracked_only:
-        return _YELLOW
+        return YELLOW
     return None
 
 
@@ -216,25 +201,25 @@ def _repo_tail_parts(node: RepoNode, C) -> list[str]:
     joins them with two spaces.
     """
     if node.error:
-        return [C(f"✗ {node.error}", _RED)]
+        return [C(f"✗ {node.error}", RED)]
 
     url = _shorten_url(node.url)
     parts = [
-        C(url, _DIM) if url else "",
-        C(node.branch or "?", _BOLD),
+        C(url, DIM) if url else "",
+        C(node.branch or "?", BOLD),
         _ahead_behind(node, C),
     ]
     if node.is_fork:
         # A fork pulls from its own copy but usually wants to track the
         # parent — worth a marker so "behind 0" is not read as "caught up
         # with the parent" when it only means "caught up with my fork".
-        parts.append(C("⑂ fork", _MAGENTA))
+        parts.append(C("⑂ fork", MAGENTA))
 
     if node.operation:
-        state = C(f"◐ {node.operation} — skipping", _YELLOW)
+        state = C(f"◐ {node.operation} — skipping", YELLOW)
     elif node.fetch_failed:
         # Fetch didn't work, so ↓↑ may be stale. Say so rather than lie.
-        state = C(f"◐ offline — {node.fetch_reason or 'unreachable'}", _YELLOW)
+        state = C(f"◐ offline — {node.fetch_reason or 'unreachable'}", YELLOW)
     else:
         glyph, gcolor = _status_glyph(node)
         if node.dirty:
@@ -243,9 +228,9 @@ def _repo_tail_parts(node: RepoNode, C) -> list[str]:
             # pull can't conflict with an untracked file. So it gets its own
             # word and a softer color than tracked changes, which can.
             if node.untracked_only:
-                state = C(f"◐ untracked {len(node.dirty_files)}", _DIM)
+                state = C(f"◐ untracked {len(node.dirty_files)}", DIM)
             else:
-                state = C(f"◐ dirty {len(node.dirty_files)}", _YELLOW)
+                state = C(f"◐ dirty {len(node.dirty_files)}", YELLOW)
         else:
             state = C(glyph, gcolor)
 
@@ -261,14 +246,14 @@ def _repo_tail(node: RepoNode, C) -> str:
 def _label(node: RepoNode, C) -> str:
     name = node.name
     if node.is_submodule:
-        return C(name, _CYAN) + C(" (submodule)", _DIM)
+        return C(name, CYAN) + C(" (submodule)", DIM)
     if node.is_symlink:
-        s = C(name, _MAGENTA) + C(" -> " + (node.symlink_target or ""), _DIM)
+        s = C(name, MAGENTA) + C(" -> " + (node.symlink_target or ""), DIM)
         # A link that is the only route to its target is just a
         # symlink. One whose target is also listed under its real name
         # is an alias: it shows a second name for a repo that appears
         # elsewhere in the tree, and must not look like a second one.
-        return s + (C(" (alias)", _DIM) if node.is_alias else C(" (symlink)", _DIM))
+        return s + (C(" (alias)", DIM) if node.is_alias else C(" (symlink)", DIM))
     return name
 
 
@@ -293,14 +278,14 @@ def _build_lines(
 
     # Root header — annotated too when the root is itself a repo, so the
     # head of the tree isn't a bare path with no status next to it.
-    root_label = C(str(root.link_path or root.path), _BOLD)
+    root_label = C(str(root.link_path or root.path), BOLD)
     header = root_label
     if root.is_repo:
         header += "  " + tail(root)
         repo_line[id(root)] = 0
         repo_base[id(root)] = root_label
     elif root.is_bare:
-        header += "  " + C(_BARE_NOTE, _DIM)
+        header += "  " + C(_BARE_NOTE, DIM)
     lines.append(header)
 
     def render_node(node: RepoNode, prefix: str, is_last: bool) -> None:
@@ -318,14 +303,14 @@ def _build_lines(
             repo_line[id(node)] = len(lines) - 1
             repo_base[id(node)] = base
         elif node.is_bare:
-            lines.append(f"{prefix}{connector}{name}/  {C(_BARE_NOTE, _DIM)}")
+            lines.append(f"{prefix}{connector}{name}/  {C(_BARE_NOTE, DIM)}")
         elif node.is_symlink:
             # A link to a plain dir: the label already carries the marker,
             # and a trailing / would land *after* it — "(symlink)/".
             lines.append(f"{prefix}{connector}{name}")
         else:
             # plain directory — show with trailing /, no status
-            lines.append(f"{prefix}{connector}{C(name + '/', _DIM)}")
+            lines.append(f"{prefix}{connector}{C(name + '/', DIM)}")
 
         child_prefix = prefix + ("    " if is_last else "│   ")
         for i, child in enumerate(node.children):
@@ -361,11 +346,11 @@ def _build_flat_lines(
         return lines, repo_line, repo_base
     # Pad every path to the widest one so the status columns line up like a
     # table instead of starting wherever the previous path happened to end.
-    path_width = max(_visible_width(C(n.rel, _DIM)) for n in repos)
+    path_width = max(_visible_width(C(n.rel, DIM)) for n in repos)
     # Pad the url column too, so branch / ahead-behind / state also align.
     url_width = max((_visible_width(_shorten_url(n.url)) for n in repos), default=0)
     for n in repos:
-        base = C(n.rel, _DIM)
+        base = C(n.rel, DIM)
         padded = base + " " * (path_width - _visible_width(base))
         # Rebuild the tail with a url column padded to a fixed width. Always
         # emit the url cell (even when empty) so the branch column lines up
@@ -393,7 +378,7 @@ def render(root: RepoNode, *, use_color: bool = True) -> str:
     def C(s: str, *codes: str) -> str:
         if not use_color:
             return s
-        return "".join(codes) + s + _RESET
+        return "".join(codes) + s + RESET
 
     lines, _, _ = _build_lines(root, C, lambda n: _repo_tail(n, C))
     return "\n".join(lines)
@@ -408,7 +393,7 @@ def render_flat(root: RepoNode, *, use_color: bool = True, repos=None) -> str:
     def C(s: str, *codes: str) -> str:
         if not use_color:
             return s
-        return "".join(codes) + s + _RESET
+        return "".join(codes) + s + RESET
 
     lines, _, _ = _build_flat_lines(root, C, lambda n: _repo_tail(n, C), repos=repos)
     return "\n".join(lines)
@@ -441,7 +426,7 @@ class LiveTree:
         def C(s: str, *codes: str) -> str:
             if not use_color:
                 return s
-            return "".join(codes) + s + _RESET
+            return "".join(codes) + s + RESET
 
         self._C = C
         self._flat = flat
@@ -459,7 +444,7 @@ class LiveTree:
             # placeholders) once and leave update() inert. The CLI only uses
             # LiveTree on a TTY, so this path is defensive.
             self._active = False
-            lines, repo_line, repo_base = builder(root, C, lambda n: C("…", _DIM))
+            lines, repo_line, repo_base = builder(root, C, lambda n: C("…", DIM))
             self.lines = [_clip_ansi(line, self._width) for line in lines]
             self.repo_line = repo_line
             self.repo_base = repo_base
@@ -468,7 +453,7 @@ class LiveTree:
             return
 
         self._active = True
-        lines, repo_line, repo_base = builder(root, C, lambda n: C("…", _DIM))
+        lines, repo_line, repo_base = builder(root, C, lambda n: C("…", DIM))
         self.lines = [_clip_ansi(line, self._width) for line in lines]
         self.repo_line = repo_line
         self.repo_base = repo_base

@@ -32,21 +32,13 @@ from pathlib import Path
 
 from .discovery import RepoNode, discover, iter_repos, set_rels
 from .status import collect_status, fetch_all, git_env, run_git
-
-# ANSI colors (mirrors tree.py).
-_RESET = "\x1b[0m"
-_DIM = "\x1b[2m"
-_BOLD = "\x1b[1m"
-_GREEN = "\x1b[32m"
-_YELLOW = "\x1b[33m"
-_RED = "\x1b[31m"
-_CYAN = "\x1b[36m"
+from .style import BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW, Colorizer
 
 _PULL_TIMEOUT = 120
 
 
 def _color(s: str, code: str, use_color: bool) -> str:
-    return code + s + _RESET if use_color else s
+    return code + s + RESET if use_color else s
 
 
 def _fmt_ahead_behind(node: RepoNode) -> str:
@@ -68,14 +60,14 @@ def _fmt_dirty(node: RepoNode, use_color: bool) -> str:
     which is what the reader needs to know about them."""
     files = node.dirty_files or []
     if not files:
-        return _color("dirty", _YELLOW, use_color)
+        return _color("dirty", YELLOW, use_color)
     shown = files[:4]
     more = len(files) - len(shown)
     listing = ", ".join(shown) + (f", +{more} more" if more > 0 else "")
     label = "untracked" if node.untracked_only else "dirty"
     return (
-        f"{_color(label, _YELLOW, use_color)} {len(files)} "
-        f"({_color(listing, _DIM, use_color)})"
+        f"{_color(label, YELLOW, use_color)} {len(files)} "
+        f"({_color(listing, DIM, use_color)})"
     )
 
 
@@ -130,28 +122,28 @@ def _report(node: RepoNode, kind: str, *, use_color: bool, dry_run: bool) -> str
     ab = _fmt_ahead_behind(node)
 
     if kind == "broken":
-        line = f"  {C('✗', _RED, use_color)} {rel}  {C(node.error or 'error', _RED, use_color)}"
+        line = f"  {C('✗', RED, use_color)} {rel}  {C(node.error or 'error', RED, use_color)}"
     elif kind == "busy":
-        line = f"  {C('◐', _YELLOW, use_color)} {rel}  {C(node.operation + ' — skipping pull', _YELLOW, use_color)}"
+        line = f"  {C('◐', YELLOW, use_color)} {rel}  {C(node.operation + ' — skipping pull', YELLOW, use_color)}"
     elif kind == "diverged":
         line = (
-            f"  {C('↕', _YELLOW, use_color)} {rel}  {ab}  "
-            f"{C('diverged — needs merge or rebase, skipping', _YELLOW, use_color)}"
+            f"  {C('↕', YELLOW, use_color)} {rel}  {ab}  "
+            f"{C('diverged — needs merge or rebase, skipping', YELLOW, use_color)}"
         )
     elif kind == "dirty":
         line = (
-            f"  {C('◐', _YELLOW, use_color)} {rel}  {ab}  "
+            f"  {C('◐', YELLOW, use_color)} {rel}  {ab}  "
             f"{_fmt_dirty(node, use_color)}, skipping pull — "
-            f"{C('commit or stash, then pulli pull again', _DIM, use_color)}"
+            f"{C('commit or stash, then pulli pull again', DIM, use_color)}"
         )
     elif kind == "ahead":
-        line = f"  {C('↑', _CYAN, use_color)} {rel}  {C(f'↑{node.ahead} ahead (not pushed)', _CYAN, use_color)}"
+        line = f"  {C('↑', CYAN, use_color)} {rel}  {C(f'↑{node.ahead} ahead (not pushed)', CYAN, use_color)}"
     elif kind == "current":
         # Nothing to do. A dirty repo with nothing to pull is only worth
         # mentioning in dry-run mode, where the point is a full inventory.
         if not (dry_run and node.dirty):
             return None
-        line = f"  {C('◐', _YELLOW, use_color)} {rel}  up to date  {_fmt_dirty(node, use_color)}"
+        line = f"  {C('◐', YELLOW, use_color)} {rel}  up to date  {_fmt_dirty(node, use_color)}"
     else:  # pullable
         return None  # printed by the pull loop, which knows the outcome
     print(line)
@@ -216,14 +208,14 @@ def pull(
 
     if dry_run:
         print()
-        print(_color("Dry run — no pulls performed.", _BOLD, use_color))
+        print(_color("Dry run — no pulls performed.", BOLD, use_color))
         for node in pullable:
             note = ""
             if node.dirty and node.untracked_only:
-                note = _color("  (untracked files only — safe)", _DIM, use_color)
+                note = _color("  (untracked files only — safe)", DIM, use_color)
             print(
-                f"  {_color('↓', _GREEN, use_color)} {node.rel}  "
-                f"{_fmt_ahead_behind(node)}  {_color('would pull', _GREEN, use_color)}{note}"
+                f"  {_color('↓', GREEN, use_color)} {node.rel}  "
+                f"{_fmt_ahead_behind(node)}  {_color('would pull', GREEN, use_color)}{note}"
             )
     else:
         for node in pullable:
@@ -246,20 +238,20 @@ def pull(
                 pulled.append(node)
                 note = ""
                 if node.dirty and node.untracked_only:
-                    note = _color("  (untracked files kept)", _DIM, use_color)
+                    note = _color("  (untracked files kept)", DIM, use_color)
                 print(
-                    f"  {_color('✓', _GREEN, use_color)} {node.rel}  "
+                    f"  {_color('✓', GREEN, use_color)} {node.rel}  "
                     f"{_fmt_ahead_behind(node)}  pulled{note}"
                 )
                 for c in new_commits:
-                    print(_color(f"      {c}", _DIM, use_color))
+                    print(_color(f"      {c}", DIM, use_color))
             else:
                 reason = _first_meaningful_line(stderr or stdout) or f"exit {rc}"
                 failed.append((node, reason))
                 print(
-                    f"  {_color('✗', _RED, use_color)} {node.rel}  "
+                    f"  {_color('✗', RED, use_color)} {node.rel}  "
                     f"{_fmt_ahead_behind(node)}  "
-                    f"{_color('pull failed: ' + reason, _RED, use_color)}"
+                    f"{_color('pull failed: ' + reason, RED, use_color)}"
                 )
 
     # ── summary ──────────────────────────────────────────────────────────
@@ -272,7 +264,7 @@ def pull(
             _color(
                 f"note: {len(offline)} repo(s) unreachable — their ↓↑ may be "
                 "stale (rerun when online).",
-                _YELLOW,
+                YELLOW,
                 use_color,
             )
         )

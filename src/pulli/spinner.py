@@ -24,11 +24,8 @@ _INTERVAL = 0.08
 # wipe it completely when we're done so it never trails into real output.
 _CLEAR = "\r\x1b[2K"
 
-# ANSI colors, matching pulli's palette (tree.py / pull.py). The glyph is
-# cyan (accent-ish), the message is dim (muted) — like pi's loader.
-_CYAN = "\x1b[36m"
-_DIM = "\x1b[2m"
-_RESET = "\x1b[0m"
+# The palette lives in style.py; the spinner only picks two entries.
+from .style import CYAN, DIM, RESET
 
 
 class Spinner:
@@ -77,7 +74,7 @@ class Spinner:
         self._frame += 1
         with self._write_lock:
             if self.use_color:
-                self.stream.write(f"\r{_CYAN}{frame}{_RESET} {_DIM}{self.message}{_RESET}")
+                self.stream.write(f"\r{CYAN}{frame}{RESET} {DIM}{self.message}{RESET}")
             else:
                 self.stream.write(f"\r{frame} {self.message}")
             self.stream.flush()

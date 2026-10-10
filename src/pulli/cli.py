@@ -24,6 +24,7 @@ from .discovery import discover, iter_repos, set_rels
 from .pull import pull
 from .status import collect_status, fetch_all, fetch_and_status
 from .tree import LiveTree, render, render_flat
+from .style import BOLD, RESET
 
 # Flags that belong to a subcommand. Used by _inject_tree to decide whether
 # a leading argument is a subcommand or a path/flag for the default one.
@@ -358,7 +359,7 @@ def _summary(repos, use_color: bool) -> str:
     if behind or diverged or broken:
         # Something needs a human — make the line findable at a glance.
         hint = f"{text} — pulli pull would update {behind} of them"
-        return f"\x1b[1m{hint}\x1b[0m" if use_color else hint
+        return BOLD + hint + RESET if use_color else hint
     return text
 
 
