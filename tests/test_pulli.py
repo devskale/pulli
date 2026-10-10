@@ -880,16 +880,20 @@ def test_dry_run_marks_untracked_only_as_safe(lab):
 # ── update check: cached, once a day, never in the way ──────────────────
 
 
-def test_is_newer_compares_versions():
-    from pulli.update import _is_newer
+def test_is_newer_compares_versions(monkeypatch):
+    from pulli import update
 
-    assert _is_newer("0.2.4") is True         # newer than 0.2.3
-    assert _is_newer("0.2.2") is False        # older
-    assert _is_newer("9.9.9") is True
-    assert _is_newer("0.10.0") is True         # 10 > 9 numerically, not lexically
-    assert _is_newer("0.2.3") is False         # equal is not newer
-    assert _is_newer(None) is False             # offline is never "newer"
-    assert _is_newer("") is False
+    # Pin the running version so the test does not break on every release
+    # (it compares against the live __version__, which moves with the repo).
+    monkeypatch.setattr(update, "__version__", "0.2.3")
+
+    assert update._is_newer("0.2.4") is True         # newer than 0.2.3
+    assert update._is_newer("0.2.2") is False        # older
+    assert update._is_newer("9.9.9") is True
+    assert update._is_newer("0.10.0") is True         # 10 > 9 numerically, not lexically
+    assert update._is_newer("0.2.3") is False         # equal is not newer
+    assert update._is_newer(None) is False             # offline is never "newer"
+    assert update._is_newer("") is False
 
 
 def test_update_cache_roundtrip(tmp_path, monkeypatch):
