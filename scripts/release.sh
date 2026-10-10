@@ -65,6 +65,12 @@ git push origin main "refs/tags/$TAG"
 
 if [ "$PUBLISH" = "--publish" ]; then
     echo "── Publish to PyPI ──"
+    # Load the token from .env.local when not already in the env.
+    ENVLOCAL="$(cd "$(dirname "$0")/.." && pwd)/.env.local"
+    if [ -z "${UV_PUBLISH_TOKEN:-}" ] && [ -f "$ENVLOCAL" ]; then
+        # shellcheck disable=SC1090
+        set -a; . "$ENVLOCAL"; set +a
+    fi
     if [ -z "${UV_PUBLISH_TOKEN:-}" ]; then
         echo "  UV_PUBLISH_TOKEN not set — get one at pypi.org (account settings"
         echo "  → API tokens, scope: this project) and re-run with it set:"
