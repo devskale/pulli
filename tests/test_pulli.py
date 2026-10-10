@@ -512,6 +512,20 @@ def test_render_marks_states(lab):
     assert "clean" not in out
 
 
+def test_render_untracked_only_is_not_dirty(lab):
+    """Untracked-only dirt renders as its own state, not `dirty`: git itself
+    does not consider untracked-only content dirty, and a pull cannot
+    conflict with an untracked file."""
+    r = lab.clone("r")
+    (r / "new.txt").write_text("new\n")
+    tree = discover(lab.root)
+    set_rels(tree)
+    collect_status(tree)
+    out = render(tree, use_color=False)
+    assert "untracked 1" in out
+    assert "dirty" not in out
+
+
 def test_no_upstream_renders_placeholder(lab):
     r = lab.clone("r")
     _git(r, "remote", "remove", "origin")

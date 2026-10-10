@@ -194,7 +194,9 @@ sorted by path, so a run is reproducible.
   no upstream to compare against (a fresh `git init`, a detached HEAD, a
   remote-less clone), which is not the same as "in sync"
 - **`●` clean (default) / `◐` dirty N / `✗` error** — `◐ offline` means the fetch
-  failed, so the numbers may be stale
+  failed, so the numbers may be stale. Untracked-only content renders as
+  `◐ untracked N` (dim), not dirty: git itself does not consider untracked
+  content dirty, and a pull cannot conflict with it
 - **symlinks** are followed by default and marked; one whose target is also
   reachable under its real name is shown as an `(alias)` and is never a
   second pull target. `--no-symlinks` skips them

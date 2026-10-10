@@ -188,11 +188,17 @@ def _repo_tail_parts(node: RepoNode, C) -> list[str]:
         state = C(f"◐ offline — {node.fetch_reason or 'unreachable'}", _YELLOW)
     else:
         glyph, gcolor = _status_glyph(node)
-        state = (
-            C(f"{glyph} dirty {len(node.dirty_files)}", _YELLOW)
-            if node.dirty
-            else C(glyph, gcolor)
-        )
+        if node.dirty:
+            # Untracked-only is not real dirt: git itself says a submodule
+            # with only untracked content is "not considered dirty", and a
+            # pull can't conflict with an untracked file. So it gets its own
+            # word and a softer color than tracked changes, which can.
+            if node.untracked_only:
+                state = C(f"◐ untracked {len(node.dirty_files)}", _DIM)
+            else:
+                state = C(f"◐ dirty {len(node.dirty_files)}", _YELLOW)
+        else:
+            state = C(glyph, gcolor)
 
     parts.append(state)
     return parts
