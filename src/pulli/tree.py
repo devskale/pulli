@@ -332,7 +332,13 @@ def _build_flat_lines(
         if len(cols) >= 4:
             cols[0] = cols[0] + " " * (url_width - _visible_width(cols[0]))
         text = "  ".join(c for c in cols if c)
-        lines.append(padded + "  " + text)
+        line = padded + "  " + text
+        # A repo that is behind is the actionable one — `pulli pull` acts on
+        # it — so the whole line is highlighted (cyan) instead of just the
+        # count. Everything up to date stays quiet: no news takes no color.
+        if n.behind and not n.error:
+            line = C(line, _CYAN)
+        lines.append(line)
         repo_line[id(n)] = len(lines) - 1
         repo_base[id(n)] = padded
     return lines, repo_line, repo_base
@@ -456,6 +462,10 @@ class LiveTree:
         if self._flat and len(cols) >= 4:
             cols[0] = cols[0] + " " * (self._url_width - _visible_width(cols[0]))
         text = self.repo_base[nid] + "  " + "  ".join(c for c in cols if c)
+        # Same highlight rule as _build_flat_lines: the whole line goes
+        # cyan when the repo is behind — that is the actionable state.
+        if self._flat and node.behind and not node.error:
+            text = self._C(text, _CYAN)
         text = _clip_ansi(text, self._width)
         with self._lock:
             self._rewrite(i, text)
