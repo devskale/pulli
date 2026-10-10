@@ -65,11 +65,11 @@ git push origin main "refs/tags/$TAG"
 
 if [ "$PUBLISH" = "--publish" ]; then
     echo "── Publish to PyPI ──"
-    # Load the token from .env.local when not already in the env.
-    ENVLOCAL="$(cd "$(dirname "$0")/.." && pwd)/.env.local"
-    if [ -z "${UV_PUBLISH_TOKEN:-}" ] && [ -f "$ENVLOCAL" ]; then
-        # shellcheck disable=SC1090
-        set -a; . "$ENVLOCAL"; set +a
+    # Token sources, in order: env → credgoo (Airtable backend).
+    # credgoo is the canonical store; .env files are not (no second copy).
+    if [ -z "${UV_PUBLISH_TOKEN:-}" ] && command -v credgoo >/dev/null 2>&1; then
+        UV_PUBLISH_TOKEN="$(credgoo UV_PUBLISH_TOKEN 2>/dev/null)" || true
+        export UV_PUBLISH_TOKEN
     fi
     if [ -z "${UV_PUBLISH_TOKEN:-}" ]; then
         echo "  UV_PUBLISH_TOKEN not set — get one at pypi.org (account settings"
