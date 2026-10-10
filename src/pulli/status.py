@@ -157,22 +157,28 @@ def _remote_url(repo: Path, env: dict[str, str] | None = None) -> str:
 def _is_fork(repo: Path, env: dict[str, str] | None = None) -> bool:
     """True when the repo looks like a fork.
 
-    A fork's remotes point at the same repo *name* under different *owners*
-    — `devskale/rodney` (origin, the user's copy) and `simonw/rodney`
-    (fork/upstream, the parent). Same name + different owner across 2+
-    remotes is the signal; we never need to ask GitHub.
+    Two signals, either one is enough:
+      1. a remote named `upstream` — the documented GitHub convention for
+         "the repo I forked from";
+      2. remotes pointing at the same repo *name* under different *owners*
+         (`devskale/rodney` + `simonw/rodney`), compared case-insensitively.
+
+    Name comparison alone misses forks whose copy was renamed
+    (`devskale/handyST` forked from `cjpais/Handy`) — hence signal 1.
     """
     remotes = _git_one(repo, "remote", env=env).split()
     if len(remotes) < 2:
         return False
+    if "upstream" in remotes:
+        return True
     owners: set[str] = set()
     names: set[str] = set()
     for name in remotes:
         url = _git_one(repo, "remote", "get-url", name, env=env)
         owner, rname = _owner_repo(url)
         if rname:
-            owners.add(owner)
-            names.add(rname)
+            owners.add(owner.lower())
+            names.add(rname.lower())
     # same repo name under more than one owner = a fork and its parent
     return len(names) == 1 and len(owners) >= 2
 
