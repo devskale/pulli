@@ -166,13 +166,23 @@ def _ahead_behind(node: RepoNode, C=lambda s, *c: s) -> str:
     if not node.upstream:
         return "·  ·"
     behind, ahead = node.behind or 0, node.ahead or 0
-    # When the whole line is already cyan (behind repos get that in the
-    # flat renderer), the count must not re-cyan a subset — nested SGR of
-    # the same color makes the rest of the line render differently. Bold
-    # alone is enough emphasis there.
-    b = C(f"↓{behind}", _BOLD) if behind else f"↓{behind}"
-    a = C(f"↑{ahead}", _BOLD) if ahead else f"↑{ahead}"
+    b = C(f"↓{behind}", _CYAN, _BOLD) if behind else f"↓{behind}"
+    a = C(f"↑{ahead}", _CYAN, _BOLD) if ahead else f"↑{ahead}"
     return f"{b} {a}"
+
+
+def _highlight_line(line: str) -> str:
+    """Cyan-wrap a whole line, surviving nested SGR resets.
+
+    Inner resets (e.g. the count's own cyan+bold) would end the outer cyan
+    mid-line and make the line render two-tone; re-apply the cyan after
+    each reset so the line stays one color throughout. Returns the input
+    unchanged when it carries no ANSI codes (color off) — nothing to
+    highlight then.
+    """
+    if "\x1b[" not in line:
+        return line
+    return _CYAN + line.replace(_RESET, _RESET + _CYAN) + _RESET
 
 
 def _repo_tail_parts(node: RepoNode, C) -> list[str]:
@@ -341,7 +351,7 @@ def _build_flat_lines(
         # it — so the whole line is highlighted (cyan) instead of just the
         # count. Everything up to date stays quiet: no news takes no color.
         if n.behind and not n.error:
-            line = C(line, _CYAN)
+            line = _highlight_line(line)
         lines.append(line)
         repo_line[id(n)] = len(lines) - 1
         repo_base[id(n)] = padded
@@ -469,7 +479,7 @@ class LiveTree:
         # Same highlight rule as _build_flat_lines: the whole line goes
         # cyan when the repo is behind — that is the actionable state.
         if self._flat and node.behind and not node.error:
-            text = self._C(text, _CYAN)
+            text = _highlight_line(text)
         text = _clip_ansi(text, self._width)
         with self._lock:
             self._rewrite(i, text)
