@@ -166,8 +166,12 @@ def _ahead_behind(node: RepoNode, C=lambda s, *c: s) -> str:
     if not node.upstream:
         return "·  ·"
     behind, ahead = node.behind or 0, node.ahead or 0
-    b = C(f"↓{behind}", _CYAN, _BOLD) if behind else f"↓{behind}"
-    a = C(f"↑{ahead}", _CYAN, _BOLD) if ahead else f"↑{ahead}"
+    # When the whole line is already cyan (behind repos get that in the
+    # flat renderer), the count must not re-cyan a subset — nested SGR of
+    # the same color makes the rest of the line render differently. Bold
+    # alone is enough emphasis there.
+    b = C(f"↓{behind}", _BOLD) if behind else f"↓{behind}"
+    a = C(f"↑{ahead}", _BOLD) if ahead else f"↑{ahead}"
     return f"{b} {a}"
 
 
