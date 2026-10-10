@@ -144,12 +144,9 @@ def _shorten_url(url: str) -> str:
 
 
 def _status_glyph(node: RepoNode) -> tuple[str, str]:
-    """Return (glyph, color) for the ok/dirty/error state."""
-    if node.error:
-        return "✗", RED
-    if node.dirty or node.operation:
-        return "◐", YELLOW
-    return "●", GREEN
+    """(symbol, color) for the state column."""
+    from .state import glyph
+    return glyph(node)
 
 
 def _ahead_behind(node: RepoNode, C=lambda s, *c: s) -> str:
@@ -175,22 +172,9 @@ def _highlight_line(line: str, color: str = CYAN) -> str:
 
 
 def _line_color(node: RepoNode) -> str | None:
-    """Whole-line highlight color for a repo, or None.
-
-    The two states that ask for action get the whole line, because the eye
-    scans rows before columns:
-      * behind (pull me) — cyan, the color of the ↓ count
-      * dirty with tracked changes (commit/stash me) — yellow
-       Untracked-only and ahead do not: untracked cannot conflict with a
-    pull, and ahead is a note ("push when you like"), not a blocker.
-    """
-    if node.error:
-        return None
-    if node.behind:
-        return CYAN
-    if node.dirty and not node.untracked_only:
-        return YELLOW
-    return None
+    """Whole-line highlight color for a repo, or None."""
+    from .state import line_color
+    return line_color(node)
 
 
 def _repo_tail_parts(node: RepoNode, C) -> list[str]:

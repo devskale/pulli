@@ -320,45 +320,34 @@ def _check_root(root: Path) -> int | None:
 
 
 def _needs_attention(node) -> bool:
-    """A repo the user should look at: broken, busy, diverged, behind, or
-    dirty. Mirrors pull.py's bucket order so tree and pull never disagree
-    about what "needs attention" means."""
-    if node.error or node.operation:
-        return True
-    if node.behind and node.ahead:
-        return True  # diverged
-    if node.behind:
-        return True
-    return bool(node.dirty)
+    """A repo the user should look at — anything that is not CURRENT."""
+    from .state import needs_attention
+    return needs_attention(node)
 
 
 def _summary(repos, use_color: bool) -> str:
     """One line under the list: the answer to "how are my repos doing?",
-    without counting lines by hand. Same buckets as pull.py's summary."""
-    n = len(repos)
-    behind = sum(1 for r in repos if r.behind and not r.ahead)
-    diverged = sum(1 for r in repos if r.behind and r.ahead)
-    ahead = sum(1 for r in repos if r.ahead and not r.behind)
-    dirty = sum(1 for r in repos if r.dirty and not (r.behind or r.ahead))
+    without counting lines by hand. Counts come from the one classifier,
+    so the summary can never disagree with the report or the tree."""
+    from .state import classify
+
+    counts: dict[str, int] = {}
+    for r in repos:
+        counts[classify(r).value] = counts.get(classify(r).value, 0) + 1
     offline = sum(1 for r in repos if r.fetch_failed)
-    broken = sum(1 for r in repos if r.error)
-    parts = [f"{n} repos"]
-    if behind:
-        parts.append(f"{behind} behind")
-    if diverged:
-        parts.append(f"{diverged} diverged")
-    if ahead:
-        parts.append(f"{ahead} ahead")
-    if dirty:
-        parts.append(f"{dirty} dirty")
+    parts = [f"{len(repos)} repos"]
+    for label in ("behind", "diverged", "ahead", "dirty", "broken"):
+        # "behind" in the summary means pullable; pull.py reports the same
+        # repos as "would pull".
+        key = "pullable" if label == "behind" else label
+        if counts.get(key):
+            parts.append(f"{counts[key]} {label}")
     if offline:
         parts.append(f"{offline} offline")
-    if broken:
-        parts.append(f"{broken} broken")
     text = " · ".join(parts)
-    if behind or diverged or broken:
+    if counts.get("pullable") or counts.get("diverged") or counts.get("broken"):
         # Something needs a human — make the line findable at a glance.
-        hint = f"{text} — pulli pull would update {behind} of them"
+        hint = f"{text} — pulli pull would update {counts.get('pullable', 0)} of them"
         return BOLD + hint + RESET if use_color else hint
     return text
 

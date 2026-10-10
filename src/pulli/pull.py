@@ -72,32 +72,15 @@ def _fmt_dirty(node: RepoNode, use_color: bool) -> str:
 
 
 def _classify(node: RepoNode) -> str:
-    """Which bucket a repo falls into. One place, so the report, the
-    counters and the summary can never disagree with each other."""
-    if node.error:
-        return "broken"
-    if node.operation:
-        return "busy"
-    behind, ahead = node.behind or 0, node.ahead or 0
-    if not node.upstream or (not behind and not ahead):
-        return "current"
-    if behind and ahead:
-        return "diverged"
-    if node.dirty and not node.untracked_only:
-        return "dirty"
-    if behind:
-        return "pullable"
-    return "ahead"
+    """Shim over state.classify — kept for _pull_json and the tests."""
+    from .state import classify
+    return classify(node).value
 
 
 def _sort_key(node: RepoNode) -> tuple[int, str]:
-    """Report order: what needs attention first. Tie-break on the display
-    path so two identical runs always print in the same order."""
-    rank = {
-        "broken": 0, "busy": 1, "diverged": 2,
-        "pullable": 3, "dirty": 4, "ahead": 5, "current": 6,
-    }[ _classify(node) ]
-    return (rank, node.rel)
+    """Report order: what needs attention first."""
+    from .state import sort_key
+    return sort_key(node)
 
 
 def _first_meaningful_line(text: str) -> str:
