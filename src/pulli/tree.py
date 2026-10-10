@@ -153,15 +153,22 @@ def _status_glyph(node: RepoNode) -> tuple[str, str]:
     return "●", _GREEN
 
 
-def _ahead_behind(node: RepoNode) -> str:
+def _ahead_behind(node: RepoNode, C=lambda s, *c: s) -> str:
     """↓behind ↑ahead, or a clear placeholder when there is no upstream.
 
     Showing `↓0 ↑0` for a repo with no upstream reads as "in sync with
     something", which is a lie — there is nothing to be in sync with.
+    A repo that is behind is the one actionable state in this list — that
+    is what `pulli pull` acts on — so the count is highlighted (cyan,
+    bold) instead of sitting in the same grey as `↑0`. Up to date stays
+    quiet: no news takes no color.
     """
     if not node.upstream:
         return "·  ·"
-    return f"↓{node.behind or 0} ↑{node.ahead or 0}"
+    behind, ahead = node.behind or 0, node.ahead or 0
+    b = C(f"↓{behind}", _CYAN, _BOLD) if behind else f"↓{behind}"
+    a = C(f"↑{ahead}", _CYAN, _BOLD) if ahead else f"↑{ahead}"
+    return f"{b} {a}"
 
 
 def _repo_tail_parts(node: RepoNode, C) -> list[str]:
@@ -178,7 +185,7 @@ def _repo_tail_parts(node: RepoNode, C) -> list[str]:
     parts = [
         C(url, _DIM) if url else "",
         C(node.branch or "?", _BOLD),
-        _ahead_behind(node),
+        _ahead_behind(node, C),
     ]
 
     if node.operation:
