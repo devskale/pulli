@@ -154,6 +154,49 @@ def _remote_url(repo: Path, env: dict[str, str] | None = None) -> str:
     return ""
 
 
+def _is_fork(repo: Path, env: dict[str, str] | None = None) -> bool:
+    """True when the repo looks like a fork.
+
+    A fork's remotes point at the same repo *name* under different *owners*
+    — `devskale/rodney` (origin, the user's copy) and `simonw/rodney`
+    (fork/upstream, the parent). Same name + different owner across 2+
+    remotes is the signal; we never need to ask GitHub.
+    """
+    remotes = _git_one(repo, "remote", env=env).split()
+    if len(remotes) < 2:
+        return False
+    owners: set[str] = set()
+    names: set[str] = set()
+    for name in remotes:
+        url = _git_one(repo, "remote", "get-url", name, env=env)
+        owner, rname = _owner_repo(url)
+        if rname:
+            owners.add(owner)
+            names.add(rname)
+    # same repo name under more than one owner = a fork and its parent
+    return len(names) == 1 and len(owners) >= 2
+
+
+def _owner_repo(url: str) -> tuple[str, str]:
+    """(owner, repo) from a remote url; ('', '') when unparseable.
+
+    `git@h:owner/repo.git` and `https://h/owner/repo` -> ('owner', 'repo').
+    """
+    if not url:
+        return "", ""
+    if "://" in url:
+        url = url.split("://", 1)[1]
+    if ":" in url:  # scp-like git@host:owner/repo
+        url = url.split(":", 1)[1]
+    parts = [p for p in url.split("/") if p]
+    if len(parts) < 2:
+        return "", ""
+    repo = parts[-1]
+    if repo.endswith(".git"):
+        repo = repo[: -len(".git")]
+    return parts[-2], repo
+
+
 # ── fetch ────────────────────────────────────────────────────────────────
 
 
@@ -351,6 +394,7 @@ def _collect_one_locked(node: RepoNode, repo: Path, env: dict[str, str]) -> None
         return
 
     node.url = _remote_url(repo, env)
+    node.is_fork = _is_fork(repo, env)
 
     # Branch / ref name. HEAD may be detached.
     branch = _git_one(repo, "symbolic-ref", "--quiet", "--short", "HEAD", env=env)

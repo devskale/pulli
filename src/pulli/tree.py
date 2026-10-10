@@ -176,12 +176,18 @@ def _highlight_line(line: str) -> str:
 
     Inner resets (e.g. the count's own cyan+bold) would end the outer cyan
     mid-line and make the line render two-tone; re-apply the cyan after
-    each reset so the line stays one color throughout. Returns the input
-    unchanged when it carries no ANSI codes (color off) — nothing to
-    highlight then.
+    each reset so the line stays one color throughout. Dim segments (url,
+    untracked state) keep their dim: cyan+dim is the same hue, just less
+    bright — the line stays one color family while keeping its hierarchy.
+    Returns the input unchanged when it carries no ANSI codes (color off)
+    — nothing to highlight then.
     """
     if "\x1b[" not in line:
         return line
+    # Drop dim segments: dim-cyan renders darker than cyan, which would
+    # split the highlighted line into bright and dark halves. The point
+    # of the highlight is one uniform color.
+    line = line.replace(_DIM, "")
     return _CYAN + line.replace(_RESET, _RESET + _CYAN) + _RESET
 
 
@@ -201,6 +207,11 @@ def _repo_tail_parts(node: RepoNode, C) -> list[str]:
         C(node.branch or "?", _BOLD),
         _ahead_behind(node, C),
     ]
+    if node.is_fork:
+        # A fork pulls from its own copy but usually wants to track the
+        # parent — worth a marker so "behind 0" is not read as "caught up
+        # with the parent" when it only means "caught up with my fork".
+        parts.append(C("⑂ fork", _MAGENTA))
 
     if node.operation:
         state = C(f"◐ {node.operation} — skipping", _YELLOW)

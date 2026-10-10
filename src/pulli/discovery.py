@@ -52,6 +52,7 @@ class RepoNode:
     untracked_only: bool = False  # dirty, but only untracked files — safe to fast-forward
     upstream: str | None = None
     url: str = ""  # remote url (credentials never stored — scrubbed at render)
+    is_fork: bool = False  # origin is a fork: another remote points at a repo of the same name (likely the upstream parent)
     operation: str | None = None  # "merge in progress", "rebase in progress", …
     fetch_failed: bool = False  # fetch did not succeed (offline / unreachable)
     fetch_reason: str | None = None  # why the fetch failed

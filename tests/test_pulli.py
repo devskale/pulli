@@ -526,6 +526,25 @@ def test_render_untracked_only_is_not_dirty(lab):
     assert "dirty" not in out
 
 
+def test_fork_marker(lab):
+    """A repo whose remotes point at the same name under different owners
+    is a fork and gets the ⑂ marker; a plain two-remote repo does not."""
+    # The lab clone's origin is <root>/origin.git -> repo name 'origin'.
+    r = lab.clone("rodney")
+    _git(r, "remote", "set-url", "origin", "https://github.com/simonw/rodney.git")
+    _git(r, "remote", "add", "fork", "https://github.com/devskale/rodney.git")
+    plain = lab.clone("plain")
+    _git(plain, "remote", "set-url", "origin", "https://github.com/simonw/rodney.git")
+    _git(plain, "remote", "add", "other", "https://github.com/devskale/other-repo.git")
+    tree = discover(lab.root)
+    set_rels(tree)
+    collect_status(tree)
+    out = render_flat(tree, use_color=False)
+    assert "⑂ fork" in out
+    assert out.count("⑂") == 1
+    assert "other-repo" not in out
+
+
 def test_no_upstream_renders_placeholder(lab):
     r = lab.clone("r")
     _git(r, "remote", "remove", "origin")
