@@ -171,24 +171,41 @@ def _ahead_behind(node: RepoNode, C=lambda s, *c: s) -> str:
     return f"{b} {a}"
 
 
-def _highlight_line(line: str) -> str:
-    """Cyan-wrap a whole line, surviving nested SGR resets.
+def _highlight_line(line: str, color: str = _CYAN) -> str:
+    """Color-wrap a whole line, surviving nested SGR resets.
 
-    Inner resets (e.g. the count's own cyan+bold) would end the outer cyan
-    mid-line and make the line render two-tone; re-apply the cyan after
-    each reset so the line stays one color throughout. Dim segments (url,
-    untracked state) keep their dim: cyan+dim is the same hue, just less
-    bright — the line stays one color family while keeping its hierarchy.
+    Inner resets (e.g. the count's own cyan+bold) would end the outer color
+    mid-line and make the line render two-tone; re-apply the color after
+    each reset so the line stays one color throughout.
     Returns the input unchanged when it carries no ANSI codes (color off)
     — nothing to highlight then.
     """
     if "\x1b[" not in line:
         return line
-    # Drop dim segments: dim-cyan renders darker than cyan, which would
-    # split the highlighted line into bright and dark halves. The point
-    # of the highlight is one uniform color.
+    # Drop dim segments: dim-color renders darker than the color, which
+    # would split the highlighted line into bright and dark halves. The
+    # point of the highlight is one uniform color.
     line = line.replace(_DIM, "")
-    return _CYAN + line.replace(_RESET, _RESET + _CYAN) + _RESET
+    return color + line.replace(_RESET, _RESET + color) + _RESET
+
+
+def _line_color(node: RepoNode) -> str | None:
+    """Whole-line highlight color for a repo, or None.
+
+    The two states that ask for action get the whole line, because the eye
+    scans rows before columns:
+      * behind (pull me) — cyan, the color of the ↓ count
+      * dirty with tracked changes (commit/stash me) — yellow
+       Untracked-only and ahead do not: untracked cannot conflict with a
+    pull, and ahead is a note ("push when you like"), not a blocker.
+    """
+    if node.error:
+        return None
+    if node.behind:
+        return _CYAN
+    if node.dirty and not node.untracked_only:
+        return _YELLOW
+    return None
 
 
 def _repo_tail_parts(node: RepoNode, C) -> list[str]:
@@ -358,11 +375,12 @@ def _build_flat_lines(
             cols[0] = cols[0] + " " * (url_width - _visible_width(cols[0]))
         text = "  ".join(c for c in cols if c)
         line = padded + "  " + text
-        # A repo that is behind is the actionable one — `pulli pull` acts on
-        # it — so the whole line is highlighted (cyan) instead of just the
-        # count. Everything up to date stays quiet: no news takes no color.
-        if n.behind and not n.error:
-            line = _highlight_line(line)
+        # Actionable rows get the whole line (see _line_color): behind →
+        # cyan (pull), dirty tracked changes → yellow (commit/stash).
+        # Everything else stays quiet: no news takes no color.
+        color = _line_color(n)
+        if color:
+            line = _highlight_line(line, color)
         lines.append(line)
         repo_line[id(n)] = len(lines) - 1
         repo_base[id(n)] = padded
@@ -487,10 +505,11 @@ class LiveTree:
         if self._flat and len(cols) >= 4:
             cols[0] = cols[0] + " " * (self._url_width - _visible_width(cols[0]))
         text = self.repo_base[nid] + "  " + "  ".join(c for c in cols if c)
-        # Same highlight rule as _build_flat_lines: the whole line goes
-        # cyan when the repo is behind — that is the actionable state.
-        if self._flat and node.behind and not node.error:
-            text = _highlight_line(text)
+        # Same highlight rule as _build_flat_lines (see _line_color).
+        if self._flat:
+            color = _line_color(node)
+            if color:
+                text = _highlight_line(text, color)
         text = _clip_ansi(text, self._width)
         with self._lock:
             self._rewrite(i, text)

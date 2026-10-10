@@ -167,6 +167,7 @@ def pull(
     follow_symlinks: bool = True,
     max_depth: int = 50,
     link_root: Path | None = None,
+    verbose: bool = False,
 ) -> int:
     """Pull every repo under `root` that is behind upstream.
 
@@ -226,6 +227,18 @@ def pull(
             )
     else:
         for node in pullable:
+            # The commits this pull will bring in — captured *before* the
+            # pull, while the range HEAD..upstream still exists (after a
+            # fast-forward it is empty).
+            new_commits: list[str] = []
+            if verbose and node.upstream:
+                rc, out, _ = run_git(
+                    node.path,
+                    "log", "--oneline", f"HEAD..{node.upstream}",
+                    timeout=_PULL_TIMEOUT,
+                )
+                if rc == 0:
+                    new_commits = [l for l in out.splitlines() if l.strip()]
             rc, stdout, stderr = run_git(
                 node.path, "pull", "--ff-only", "--quiet", timeout=_PULL_TIMEOUT
             )
@@ -238,6 +251,8 @@ def pull(
                     f"  {_color('✓', _GREEN, use_color)} {node.rel}  "
                     f"{_fmt_ahead_behind(node)}  pulled{note}"
                 )
+                for c in new_commits:
+                    print(_color(f"      {c}", _DIM, use_color))
             else:
                 reason = _first_meaningful_line(stderr or stdout) or f"exit {rc}"
                 failed.append((node, reason))

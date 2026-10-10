@@ -154,6 +154,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Omit the one-line summary under the list.",
     )
+    tree_p.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="List the incoming commits under each behind repo "
+        "(git log --oneline, HEAD..upstream).",
+    )
 
     # `pulli pull` — pull repos that are behind.
     pull_p = sub.add_parser("pull", help="Pull repos that are behind upstream.")
@@ -162,6 +168,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="Show what would be pulled without pulling.",
+    )
+    pull_p.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="List the new commits under each pulled repo (git log --oneline).",
     )
     pull_p.add_argument(
         "--no-fetch",
@@ -448,6 +459,7 @@ def _run_pull(args) -> int:
         follow_symlinks=not args.no_symlinks,
         max_depth=args.max_depth,
         link_root=getattr(args, "link_root", None),
+        verbose=getattr(args, "verbose", False),
     )
 
 
