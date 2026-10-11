@@ -132,8 +132,8 @@ def build_parser() -> argparse.ArgumentParser:
     tree_p.add_argument(
         "--max-depth",
         type=int,
-        default=50,
-        help="Maximum recursion depth (default: 50).",
+        default=2,
+        help="Maximum recursion depth (default: 2).",
     )
     tree_p.add_argument(
         "--tree",
@@ -188,8 +188,8 @@ def build_parser() -> argparse.ArgumentParser:
     pull_p.add_argument(
         "--max-depth",
         type=int,
-        default=50,
-        help="Maximum recursion depth (default: 50).",
+        default=2,
+        help="Maximum recursion depth (default: 2).",
     )
 
     # `pulli update` — self-update.
