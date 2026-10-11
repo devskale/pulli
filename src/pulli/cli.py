@@ -386,6 +386,12 @@ def _run_tree(args) -> int:
         # Stream: print the skeleton immediately, then fill each repo's
         # status line in as it becomes ready — no blank-screen wait.
         live = LiveTree(tree, use_color=use_color, flat=flat)
+        if flat and not args.no_summary:
+            # The summary prints its own skeleton line right away ("N
+            # repos…") and rewrites it in place as statuses land — same
+            # deal as the repo lines, so the eye has the answer's shape from
+            # the first frame on.
+            print(f"{len(repos)} repos…")
         fetch_and_status(
             repos,
             quiet=True,
@@ -394,10 +400,10 @@ def _run_tree(args) -> int:
             on_done=live.update,
         )
         if flat and not args.no_summary:
-            # The live tree is done rewriting lines; the summary lands
-            # below it, where the eye ends up anyway.
-            print()
-            print(_summary(list(iter_repos(tree)), use_color))
+            # Rewrite the skeleton summary in place: one line up, clear,
+            # print the real one. The tree is done rewriting its lines, so
+            # the cursor is already at the bottom.
+            sys.stdout.write("\r\x1b[2K" + _summary(list(iter_repos(tree)), use_color) + "\n")
     else:
         # Not a terminal: no in-place cursor control. Do the work, then
         # print the complete output once (byte-identical to before).
