@@ -258,6 +258,13 @@ def _walk_links(
     would win and the actual directory would disappear from the tree, which
     is backwards. Walking links last means a real directory always wins, and
     a link is only shown when nothing else reaches its target.
+
+    This pass also descends into plain directories the first walk skipped
+    (plain dirs inside a repo are never recorded as nodes) looking for
+    symlinks: a repo checked out *inside* another repo often keeps links to
+    sibling repos in a dot-dir (`.links/`), and those links are the whole
+    point of the layout. Plain dirs found this way are traversed, not
+    recorded — the tree stays as small as before.
     """
     # As in _walk: a node deeper than max_depth is not expanded. The link
     # pass must respect the same limit as the plain walk, or --max-depth
@@ -275,6 +282,23 @@ def _walk_links(
         link = real_dir / name
         try:
             if not link.is_symlink():
+                # Not a link: still look *inside* for links (the .links/
+                # case) — but only one level of plain-dir descent, so a
+                # repo's src/ tree is not pointlessly scanned. The dir
+                # becomes a real node so links land under it, not under
+                # the repo root.
+                if link.is_dir() and not _is_pruned(name):
+                    dir_node = RepoNode(
+                        path=link,
+                        link_path=display_dir / name,
+                        name=name,
+                        depth=node.depth + 1,
+                        parent=node,
+                    )
+                    _walk_links_plain(dir_node, link, display_dir / name,
+                                      max_depth, visited)
+                    if dir_node.children:
+                        node.children.append(dir_node)
                 continue
             target = link.resolve(strict=True)
         except (OSError, RuntimeError):
@@ -314,6 +338,63 @@ def _walk_links(
             _add_submodules(child, target, display, node.depth + 1, visited)
         if not already:
             _walk_links(child, target, display, max_depth, visited)
+
+    node.children.sort(key=lambda c: c.name.lower())
+
+
+def _walk_links_plain(
+    node: RepoNode,
+    real_dir: Path,
+    display_dir: Path,
+    max_depth: int,
+    visited: set[Path],
+) -> None:
+    """Look for symlinks inside a plain dir the first walk never recorded
+    (plain dirs inside a repo are skipped there). Records only the links
+    themselves as children of `node` — the plain dir stays invisible, so the
+    tree does not grow a directory per level of indirection.
+
+    Bounded to one level: the `.links/` layout is one dir of links; a full
+    recursive scan of a repo's working tree would be noise and cost.
+    """
+    try:
+        entries = sorted(os.listdir(real_dir), key=lambda s: s.lower())
+    except OSError:
+        return
+    for name in entries:
+        if name == ".git":
+            continue
+        link = real_dir / name
+        try:
+            if not link.is_symlink():
+                continue
+            target = link.resolve(strict=True)
+        except (OSError, RuntimeError):
+            continue
+        if not target.is_dir():
+            continue
+        display = display_dir / name
+        already = target in visited
+        if not already:
+            visited.add(target)
+        try:
+            is_repo = _is_git_dir(target)
+        except OSError:
+            continue
+        child = RepoNode(
+            path=target,
+            link_path=display,
+            name=name,
+            depth=node.depth + 1,
+            parent=node,
+            is_symlink=True,
+            symlink_target=_readlink(link),
+            is_repo=is_repo and not already,
+            is_alias=already,
+        )
+        node.children.append(child)
+        if is_repo and not already:
+            _add_submodules(child, target, display, node.depth + 1, visited)
 
     node.children.sort(key=lambda c: c.name.lower())
 
