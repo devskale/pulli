@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -25,14 +26,6 @@ from .pull import pull
 from .status import collect_incoming, collect_status, fetch_all, fetch_and_status
 from .tree import LiveTree, render, render_flat
 from .style import BOLD, RESET
-
-# Flags that belong to a subcommand. Used by _inject_tree to decide whether
-# a leading argument is a subcommand or a path/flag for the default one.
-_TREE_FLAGS = {
-    "--no-symlinks", "--no-fetch", "--no-color", "--max-depth",
-    "--dry-run", "--json", "--tree",
-}
-_PULL_FLAGS = {"--no-color", "--dry-run", "--json", "--no-fetch"}
 
 SUBCOMMANDS = ("tree", "pull", "update")
 
@@ -257,21 +250,23 @@ def _run_update(args) -> int:
         print(f"pulli {__version__} → {latest} would be installed. Run: pulli update")
         return 0
 
-    exe = Path(sys.argv[0]).resolve()
-    candidates: list[tuple[str, list[str]]] = []
-    if ".local/bin" in str(exe) or True:  # uv tool and pipx both live here
-        candidates.append(("uv", ["uv", "tool", "upgrade", "pulli"]))
-        candidates.append(("pipx", ["pipx", "upgrade", "pulli"]))
-    import shutil
-    for name, cmd in candidates:
-        if shutil.which(cmd[0]):
-            print(f"pulli {__version__} → {latest} (via {name})")
-            rc = subprocess.run(cmd).returncode
-            if rc == 0:
-                print(f"Updated to pulli {latest}.")
-            return rc
+    # uv tool and pipx installs are indistinguishable by path (both land
+    # in ~/.local/bin), so try each installer found on PATH — and keep
+    # going when one fails: upgrading with the wrong tool errors out
+    # instead of pretending to succeed, and the right one may be next.
+    for name, cmd in (
+        ("uv", ["uv", "tool", "upgrade", "pulli"]),
+        ("pipx", ["pipx", "upgrade", "pulli"]),
+    ):
+        if not shutil.which(cmd[0]):
+            continue
+        print(f"pulli {__version__} → {latest} (via {name})")
+        rc = subprocess.run(cmd).returncode
+        if rc == 0:
+            print(f"Updated to pulli {latest}.")
+            return 0
     print(
-        f"pulli {latest} is available, but no uv/pipx found. Update manually, e.g.:\n"
+        f"pulli {latest} is available, but no installer succeeded. Update manually, e.g.:\n"
         f"  pip install --upgrade pulli",
         file=sys.stderr,
     )

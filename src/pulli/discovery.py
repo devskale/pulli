@@ -487,20 +487,15 @@ def _walk(
                 continue
         except OSError:
             continue
+        if link.is_symlink():
+            continue  # symlinks are handled in the second pass
 
-        # Mark every directory we descend into as seen, so no directory is
-        # ever expanded twice — `pulli pull` must not fast-forward the same
-        # work tree from two entries.
+        # Mark every directory we *descend into* as seen — and only those —
+        # so no directory is ever expanded twice: `pulli pull` must not
+        # fast-forward the same work tree from two entries.
         if traverse in visited:
             continue
         visited.add(traverse)
-
-        try:
-            is_dir = link.is_dir()
-        except OSError:
-            continue
-        if not is_dir or link.is_symlink():
-            continue  # symlinks are handled in the second pass
 
         # Guard against permission errors on unreadable dirs.
         try:

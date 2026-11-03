@@ -1039,3 +1039,44 @@ def test_update_check_up_to_date(tmp_path, monkeypatch, capsys):
     assert cli.main(["update", "--check"]) == 0
     out = capsys.readouterr().out
     assert "up to date" in out
+
+
+def test_update_falls_through_to_next_installer(tmp_path, monkeypatch, capsys):
+    """A failing uv upgrade must not end the run — pulli may be a pipx
+    install (both land in ~/.local/bin), so pipx gets its turn instead of
+    exiting 1 with the job undone."""
+    from pulli import update
+
+    monkeypatch.setenv("PULLI_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr(update, "_fetch_latest", lambda: "9.9.9")
+    monkeypatch.setattr(
+        cli.shutil, "which", lambda n: {"uv": "/x/uv", "pipx": "/x/pipx"}[n]
+    )
+
+    tried: list[str] = []
+
+    class _R:
+        def __init__(self, rc: int) -> None:
+            self.returncode = rc
+
+    def fake_run(cmd, *a, **kw):
+        tried.append(cmd[0])
+        return _R(0 if cmd[0] == "pipx" else 1)  # uv fails, pipx wins
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    assert cli.main(["update"]) == 0
+    out = capsys.readouterr().out
+    assert tried == ["uv", "pipx"]
+    assert "via pipx" in out
+    assert "Updated" in out
+
+
+def test_update_reports_when_no_installer_succeeds(tmp_path, monkeypatch, capsys):
+    from pulli import update
+
+    monkeypatch.setenv("PULLI_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr(update, "_fetch_latest", lambda: "9.9.9")
+    monkeypatch.setattr(cli.shutil, "which", lambda n: None)  # nothing on PATH
+    assert cli.main(["update"]) == 1
+    out = capsys.readouterr()
+    assert "no installer succeeded" in out.err
