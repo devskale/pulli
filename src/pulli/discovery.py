@@ -246,6 +246,53 @@ def discover(
     return root_node
 
 
+def _link_child(
+    node: RepoNode,
+    link: Path,
+    name: str,
+    display: Path,
+    visited: set[Path],
+) -> RepoNode | None:
+    """Record one symlink entry as a child of `node`. Shared by every
+    pass of the link walk.
+
+    A link whose target was already walked is an *alias*: the directory
+    exists here, but its repo is the one already listed elsewhere. Show
+    the link so the tree still reflects what is on disk, but not as a
+    second pull target — `pull` must never fast-forward the same work
+    tree twice. Returns None when the link is unusable (broken, not a
+    dir, unreadable).
+    """
+    try:
+        target = link.resolve(strict=True)
+    except (OSError, RuntimeError):
+        return None
+    if not target.is_dir():
+        return None
+    already = target in visited
+    if not already:
+        visited.add(target)
+    try:
+        is_repo = _is_git_dir(target)
+    except OSError:
+        return None
+    child = RepoNode(
+        path=target,
+        link_path=display,
+        name=name,
+        depth=node.depth + 1,
+        parent=node,
+        is_symlink=True,
+        symlink_target=_readlink(link),
+        is_repo=is_repo and not already,
+        is_alias=already,
+    )
+    node.children.append(child)
+    if is_repo and not already:
+        _add_submodules(child, target, display, node.depth + 1, visited)
+    return child
+
+
 def _walk_links(
     node: RepoNode,
     real_dir: Path,
@@ -309,62 +356,30 @@ def _walk_links(
                     if existing is None and dir_node.children:
                         node.children.append(dir_node)
                 continue
-            target = link.resolve(strict=True)
-        except (OSError, RuntimeError):
-            continue
-        if not target.is_dir():
-            continue
-
-        display = display_dir / name
-        already = target in visited
-        if not already:
-            visited.add(target)
-
-        try:
-            is_repo = _is_git_dir(target)
         except OSError:
             continue
 
-        # A link whose target was already walked is an *alias*: the
-        # directory exists here, but its repo is the one already listed
-        # elsewhere. Show the link so the tree still reflects what is on
-        # disk, but not as a second pull target — `pull` must never
-        # fast-forward the same work tree twice.
-        child = RepoNode(
-            path=target,
-            link_path=display,
-            name=name,
-            depth=node.depth + 1,
-            parent=node,
-            is_symlink=True,
-            symlink_target=_readlink(link),
-            is_repo=is_repo and not already,
-            is_alias=already,
-        )
-        node.children.append(child)
-
-        if is_repo and not already:
-            _add_submodules(child, target, display, node.depth + 1, visited)
-        if not already:
-            _walk_links(child, target, display, max_depth, visited)
+        child = _link_child(node, link, name, display_dir / name, visited)
+        # Expand a fresh link target in place — aliases are listed under
+        # their real name already, and expanding them would duplicate the
+        # subtree.
+        if child is not None and not child.is_alias:
+            _walk_links(child, child.path, display_dir / name,
+                        max_depth, visited)
 
     node.children.sort(key=lambda c: c.name.lower())
 
 
-def _walk_links_plain(
+def _record_direct_links(
     node: RepoNode,
     real_dir: Path,
     display_dir: Path,
-    max_depth: int,
     visited: set[Path],
 ) -> None:
-    """Look for symlinks inside a plain dir the first walk never recorded
-    (plain dirs inside a repo are skipped there). Records only the links
-    themselves as children of `node` — the plain dir stays invisible, so the
-    tree does not grow a directory per level of indirection.
+    """Each symlink directly inside `real_dir` becomes a child of `node`.
 
-    Bounded to one level: the `.links/` layout is one dir of links; a full
-    recursive scan of a repo's working tree would be noise and cost.
+    Terminal: never descends into plain dirs and never expands link
+    targets — those are `_walk_links_plain`'s and `_walk_links`' jobs.
     """
     try:
         entries = sorted(os.listdir(real_dir), key=lambda s: s.lower())
@@ -377,35 +392,60 @@ def _walk_links_plain(
         try:
             if not link.is_symlink():
                 continue
-            target = link.resolve(strict=True)
-        except (OSError, RuntimeError):
-            continue
-        if not target.is_dir():
-            continue
-        display = display_dir / name
-        already = target in visited
-        if not already:
-            visited.add(target)
-        try:
-            is_repo = _is_git_dir(target)
         except OSError:
             continue
-        child = RepoNode(
-            path=target,
-            link_path=display,
+        _link_child(node, link, name, display_dir / name, visited)
+    node.children.sort(key=lambda c: c.name.lower())
+
+
+def _walk_links_plain(
+    node: RepoNode,
+    real_dir: Path,
+    display_dir: Path,
+    max_depth: int,
+    visited: set[Path],
+) -> None:
+    """Look for links inside a plain dir the first walk never recorded
+    (plain dirs inside a repo are skipped there).
+
+    Records the dir's direct symlinks as children of `node` — and, one
+    level deeper (depth permitting), the direct symlinks of its plain
+    subdirs. That second level is the `.links/` layout *inside a repo*:
+    those links are the whole point of the layout, and without the
+    descent a repo found by the normal walk never showed them, while the
+    same repo reached via a symlink did — the path you took decided
+    what you saw.
+
+    Still bounded: the descent never goes below that one extra level,
+    and plain dirs become nodes only when they hold links, so the tree
+    does not grow a directory per level of indirection.
+    """
+    _record_direct_links(node, real_dir, display_dir, visited)
+    if node.depth + 2 > max_depth:
+        return
+    try:
+        entries = sorted(os.listdir(real_dir), key=lambda s: s.lower())
+    except OSError:
+        return
+    for name in entries:
+        if name == ".git":
+            continue
+        d = real_dir / name
+        try:
+            if d.is_symlink() or not d.is_dir() or _is_pruned(name):
+                continue
+        except OSError:
+            continue
+        sub = RepoNode(
+            path=d,
+            link_path=display_dir / name,
             name=name,
             depth=node.depth + 1,
             parent=node,
-            is_symlink=True,
-            symlink_target=_readlink(link),
-            is_repo=is_repo and not already,
-            is_alias=already,
         )
-        node.children.append(child)
-        if is_repo and not already:
-            _add_submodules(child, target, display, node.depth + 1, visited)
-
-    node.children.sort(key=lambda c: c.name.lower())
+        _record_direct_links(sub, d, display_dir / name, visited)
+        if sub.children:
+            node.children.append(sub)
 
 
 def _add_submodules(

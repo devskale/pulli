@@ -195,6 +195,44 @@ def test_alias_link_in_recorded_dir_does_not_duplicate_it(lab):
     assert "(alias)" in out
 
 
+def test_links_dir_inside_normally_walked_repo_is_found(lab):
+    """A repo's .links/ dir of sibling links must be found by the normal
+    walk — it used to appear only when the repo itself was reached via a
+    symlink, so the path you took decided what you saw (the a2e3fb9
+    regression)."""
+    outside = lab.root.parent / "elsewhere"
+    outside.mkdir(exist_ok=True)
+    _git(outside, "init", "-q", ".")
+    outer = lab.clone("outer")
+    (outer / ".links").mkdir()
+    os.symlink(outside, outer / ".links" / "sib")
+    tree = discover(lab.root, max_depth=4)
+    set_rels(tree)
+    outer_node = [n for n in iter_repos(tree) if n.name == "outer"][0]
+    links_dir = [c for c in outer_node.children if c.name == ".links"]
+    assert links_dir, "`.links` dir not found under the repo"
+    sib = [c for c in links_dir[0].children if c.name == "sib"]
+    assert sib and sib[0].is_symlink
+    # target is outside the walk — a real repo, not an alias, and pullable
+    assert not sib[0].is_alias
+    assert sib[0].path == outside.resolve()
+    assert any(n.path == outside.resolve() for n in iter_repos(tree))
+
+
+def test_links_dir_descent_respects_max_depth(lab):
+    """The extra .links descent is depth-budgeted like everything else:
+    at max_depth 2 the link (depth 3) stays hidden, at 3 it shows."""
+    outer = lab.clone("outer")
+    (outer / ".links").mkdir()
+    os.symlink(lab.root / "outer", outer / ".links" / "self")
+    shallow = discover(lab.root, max_depth=2)
+    outer_node = [n for n in iter_repos(shallow) if n.name == "outer"][0]
+    assert not [c for c in outer_node.children if c.name == ".links"]
+    deep = discover(lab.root, max_depth=3)
+    outer_node = [n for n in iter_repos(deep) if n.name == "outer"][0]
+    assert [c for c in outer_node.children if c.name == ".links"]
+
+
 def test_no_symlinks_flag_skips_links(lab):
     lab.clone("real")
     os.symlink(lab.root / "real", lab.root / "link")
