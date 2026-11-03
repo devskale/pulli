@@ -174,6 +174,27 @@ def test_symlink_does_not_duplicate_a_repo(lab):
     assert "link" not in names      # and the link is not shown as well
 
 
+def test_alias_link_in_recorded_dir_does_not_duplicate_it(lab):
+    """A plain dir the first walk recorded (it holds a repo) must not be
+    duplicated when the link pass finds an alias link in it too — the tree
+    used to show the same directory twice, once per pass."""
+    clones = lab.root / "clones"
+    clones.mkdir()
+    _git(lab.root, "clone", "-q", str(lab.bare), "clones/real")
+    os.symlink(clones / "real", clones / "link")
+    tree = discover(lab.root)
+    set_rels(tree)
+    dup = [c for c in tree.children if c.name == "clones"]
+    assert len(dup) == 1
+    names = {c.name for c in dup[0].children}
+    assert names == {"real", "link"}
+    # and the rendered tree shows the dir once, with both children in it
+    out = render(tree, use_color=False)
+    dir_lines = [l for l in out.splitlines() if l.rstrip().endswith("clones/")]
+    assert len(dir_lines) == 1
+    assert "(alias)" in out
+
+
 def test_no_symlinks_flag_skips_links(lab):
     lab.clone("real")
     os.symlink(lab.root / "real", lab.root / "link")

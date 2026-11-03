@@ -286,9 +286,15 @@ def _walk_links(
                 # case) — but only one level of plain-dir descent, so a
                 # repo's src/ tree is not pointlessly scanned. The dir
                 # becomes a real node so links land under it, not under
-                # the repo root.
+                # the repo root — unless the first walk already recorded
+                # it (a plain dir outside a repo is a node there): then
+                # the links join the existing node, or the tree shows the
+                # same directory twice.
                 if link.is_dir() and not _is_pruned(name):
-                    dir_node = RepoNode(
+                    existing = next(
+                        (c for c in node.children if c.path == link), None
+                    )
+                    dir_node = existing if existing is not None else RepoNode(
                         path=link,
                         link_path=display_dir / name,
                         name=name,
@@ -297,7 +303,7 @@ def _walk_links(
                     )
                     _walk_links_plain(dir_node, link, display_dir / name,
                                       max_depth, visited)
-                    if dir_node.children:
+                    if existing is None and dir_node.children:
                         node.children.append(dir_node)
                 continue
             target = link.resolve(strict=True)
