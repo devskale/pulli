@@ -351,6 +351,34 @@ def fetch_and_status(
     return failed
 
 
+# ── incoming commits (-v) ───────────────────────────────────────────
+
+_LOG_TIMEOUT = 30
+
+
+def incoming_commits(repo: Path, upstream: str) -> list[str]:
+    """`git log --oneline HEAD..upstream` — the commits a pull would bring
+    in. Must run *before* any pull: after a fast-forward the range is
+    empty. Returns [] on any git failure (stale refs, no upstream object).
+    """
+    rc, out, _ = run_git(repo, "log", "--oneline", f"HEAD..{upstream}",
+                         timeout=_LOG_TIMEOUT)
+    if rc != 0:
+        return []
+    return [l for l in out.splitlines() if l.strip()]
+
+
+def collect_incoming(nodes: list[RepoNode]) -> None:
+    """Fill node.incoming for every repo that is behind its upstream.
+
+    Only repos with something incoming are asked — verbose is an extra git
+    call per *interesting* repo, not per repo in the tree.
+    """
+    for n in nodes:
+        if n.upstream and (n.behind or 0) > 0 and not n.error:
+            n.incoming = incoming_commits(n.path, n.upstream)
+
+
 # ── status collection ────────────────────────────────────────────────────
 
 

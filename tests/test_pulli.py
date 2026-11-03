@@ -796,6 +796,38 @@ def test_cli_attention_filter(lab, capsys):
     assert "current" not in out
 
 
+def test_cli_verbose_lists_incoming_commits(lab, capsys):
+    """tree -v lists the commits a pull would bring in, under the repo
+    row — the flag used to be parsed and then ignored."""
+    r = lab.clone("r")
+    lab.advance_upstream()
+    _git(r, "fetch", "-q")
+    assert cli.main(["-v", "--no-fetch", str(lab.root)]) == 0
+    out = capsys.readouterr().out
+    assert "two" in out          # the upstream commit's message
+    # and only for -v: the plain run stays one line per repo
+    assert cli.main(["--no-fetch", str(lab.root)]) == 0
+    assert "two" not in capsys.readouterr().out
+
+
+def test_pull_verbose_lists_new_commits(lab, capsys):
+    """pull -v shows each pulled repo's new commits (regression for the
+    refactor onto status.incoming_commits)."""
+    import contextlib
+    import io
+
+    r = lab.clone("r")
+    lab.advance_upstream()
+    _git(r, "fetch", "-q")
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = pull(lab.root, fetch=False, verbose=True, use_color=False)
+    assert rc == 0
+    out = buf.getvalue()
+    assert "pulled" in out
+    assert "two" in out          # the commit that just landed
+
+
 def test_cli_filter_empty_says_so(lab, capsys):
     """An empty filter result prints a message, not silence (clig.dev:
     'It's rare that printing nothing at all is the best default')."""

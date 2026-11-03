@@ -57,6 +57,9 @@ class RepoNode:
     fetch_failed: bool = False  # fetch did not succeed (offline / unreachable)
     fetch_reason: str | None = None  # why the fetch failed
     error: str | None = None
+    # incoming commits (git log --oneline HEAD..upstream), filled in only
+    # when the caller asked for -v — one git call per behind repo.
+    incoming: list[str] = field(default_factory=list)
 
     def set_rel(self, root: Path) -> None:
         """Display path relative to `root`.

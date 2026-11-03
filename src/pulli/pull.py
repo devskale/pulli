@@ -31,7 +31,13 @@ import sys
 from pathlib import Path
 
 from .discovery import RepoNode, discover, iter_repos, set_rels
-from .status import collect_status, fetch_all, git_env, run_git
+from .status import (
+    collect_incoming,
+    collect_status,
+    fetch_all,
+    incoming_commits,
+    run_git,
+)
 from .style import BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW, Colorizer
 
 _PULL_TIMEOUT = 120
@@ -207,13 +213,7 @@ def pull(
             # fast-forward it is empty).
             new_commits: list[str] = []
             if verbose and node.upstream:
-                rc, out, _ = run_git(
-                    node.path,
-                    "log", "--oneline", f"HEAD..{node.upstream}",
-                    timeout=_PULL_TIMEOUT,
-                )
-                if rc == 0:
-                    new_commits = [l for l in out.splitlines() if l.strip()]
+                new_commits = incoming_commits(node.path, node.upstream)
             rc, stdout, stderr = run_git(
                 node.path, "pull", "--ff-only", "--quiet", timeout=_PULL_TIMEOUT
             )

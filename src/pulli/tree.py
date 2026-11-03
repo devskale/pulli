@@ -245,6 +245,7 @@ def _build_lines(
     root: RepoNode,
     C,
     tail,
+    verbose: bool = False,
 ) -> tuple[list[str], dict[int, int], dict[int, str]]:
     """Build the tree lines.
 
@@ -286,6 +287,12 @@ def _build_lines(
             lines.append(base + "  " + tail(node))
             repo_line[id(node)] = len(lines) - 1
             repo_base[id(node)] = base
+            if verbose:
+                # -v: the incoming commits under the repo row, indented like
+                # a child so they read as belonging to it.
+                vp = prefix + ("    " if is_last else "│   ")
+                for c in node.incoming:
+                    lines.append(vp + C(c, DIM))
         elif node.is_bare:
             lines.append(f"{prefix}{connector}{name}/  {C(_BARE_NOTE, DIM)}")
         elif node.is_symlink:
@@ -312,6 +319,7 @@ def _build_flat_lines(
     C,
     tail,
     repos=None,
+    verbose: bool = False,
 ) -> tuple[list[str], dict[int, int], dict[int, str]]:
     """Build a flat list: one line per repo, no tree structure.
 
@@ -353,10 +361,16 @@ def _build_flat_lines(
         lines.append(line)
         repo_line[id(n)] = len(lines) - 1
         repo_base[id(n)] = padded
+        if verbose:
+            # -v: incoming commits, aligned under the status column so they
+            # visually belong to their repo row.
+            indent = " " * (path_width + 2)
+            for c in n.incoming:
+                lines.append(indent + C(c, DIM))
     return lines, repo_line, repo_base
 
 
-def render(root: RepoNode, *, use_color: bool = True) -> str:
+def render(root: RepoNode, *, use_color: bool = True, verbose: bool = False) -> str:
     """Render the full tree as a string."""
 
     def C(s: str, *codes: str) -> str:
@@ -364,11 +378,13 @@ def render(root: RepoNode, *, use_color: bool = True) -> str:
             return s
         return "".join(codes) + s + RESET
 
-    lines, _, _ = _build_lines(root, C, lambda n: _repo_tail(n, C))
+    lines, _, _ = _build_lines(root, C, lambda n: _repo_tail(n, C),
+                               verbose=verbose)
     return "\n".join(lines)
 
 
-def render_flat(root: RepoNode, *, use_color: bool = True, repos=None) -> str:
+def render_flat(root: RepoNode, *, use_color: bool = True, repos=None,
+                verbose: bool = False) -> str:
     """Render a flat list of repos (one line each), not the tree.
 
     `repos` overrides the default "all repos sorted by path" list.
@@ -379,7 +395,8 @@ def render_flat(root: RepoNode, *, use_color: bool = True, repos=None) -> str:
             return s
         return "".join(codes) + s + RESET
 
-    lines, _, _ = _build_flat_lines(root, C, lambda n: _repo_tail(n, C), repos=repos)
+    lines, _, _ = _build_flat_lines(root, C, lambda n: _repo_tail(n, C),
+                                    repos=repos, verbose=verbose)
     return "\n".join(lines)
 
 

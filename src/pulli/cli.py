@@ -22,7 +22,7 @@ from . import __version__
 from .update import update_hint
 from .discovery import discover, iter_repos, set_rels
 from .pull import pull
-from .status import collect_status, fetch_all, fetch_and_status
+from .status import collect_incoming, collect_status, fetch_all, fetch_and_status
 from .tree import LiveTree, render, render_flat
 from .style import BOLD, RESET
 
@@ -374,6 +374,8 @@ def _run_tree(args) -> int:
         if not args.no_fetch:
             fetch_all(repos, quiet=True, use_color=_use_color(args))
         collect_status(tree)
+        if args.verbose:
+            collect_incoming(repos)
         _print_json(tree)
         return 0
 
@@ -382,7 +384,12 @@ def _run_tree(args) -> int:
     # Filters decide on fetched status, so they cannot stream: the skeleton
     # is printed before anything is known. Run the batch path instead.
     filtered = bool(getattr(args, "behind", False) or getattr(args, "attention", False))
-    if sys.stdout.isatty() and not filtered:
+    # -v needs the batch path too: the live tree rewrites each repo's line
+    # in place under a fixed row budget, and extra commit lines would break
+    # that arithmetic. Print complete, once — the point of -v is reading
+    # the commits, not watching them arrive.
+    verbose = bool(getattr(args, "verbose", False))
+    if sys.stdout.isatty() and not filtered and not verbose:
         # Stream: print the skeleton immediately, then fill each repo's
         # status line in as it becomes ready — no blank-screen wait.
         live = LiveTree(tree, use_color=use_color, flat=flat)
@@ -410,6 +417,8 @@ def _run_tree(args) -> int:
         if not args.no_fetch:
             fetch_all(repos, quiet=True, use_color=use_color)
         collect_status(tree)
+        if verbose:
+            collect_incoming(repos)
         if flat:
             shown = list(iter_repos(tree))
             if args.behind:
@@ -425,12 +434,13 @@ def _run_tree(args) -> int:
                 what = "behind" if args.behind else "needing attention"
                 print(f"No repos {what} under {args.link_root}")
                 return 0
-            print(render_flat(tree, use_color=use_color, repos=shown))
+            print(render_flat(tree, use_color=use_color, repos=shown,
+                              verbose=verbose))
             if not args.no_summary:
                 print()
                 print(_summary(shown, use_color))
         else:
-            print(render(tree, use_color=use_color))
+            print(render(tree, use_color=use_color, verbose=verbose))
     return 0
 
 
@@ -479,6 +489,7 @@ def _node_dict(n) -> dict:
         "operation": n.operation,
         "fetch_failed": n.fetch_failed or None,
         "error": n.error,
+        "incoming": n.incoming or None,
     }
 
 
