@@ -70,9 +70,14 @@ def git_env() -> dict[str, str]:
             env["GIT_TERMINAL_PROMPT"] = "0"
             env["GIT_ASKPASS"] = env.get("GIT_ASKPASS", "echo")
             env["SSH_ASKPASS"] = env.get("SSH_ASKPASS", "echo")
-            # Hanging the SSH connection is better than a 30s frozen tree.
-            # We still bound the subprocess with a timeout.
-            env.setdefault("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
+            # Deliberately NOT setting GIT_SSH_COMMAND: the env var beats a
+            # repo's `core.sshCommand` in git's precedence, so forcing one
+            # here silently broke every repo that authenticates through it
+            # (e.g. `ssh -i ~/.ssh/key -o IdentitiesOnly=yes`) — the fetch
+            # then failed publickey auth and was reported "unreachable".
+            # Hangs are already bounded by the subprocess timeout above, and
+            # a passphrase prompt off-TTY goes through SSH_ASKPASS (echo →
+            # empty → fast failure) instead of blocking.
             # Deterministic, locale-independent parsing of git output.
             env.setdefault("LC_ALL", "C")
             _env_cache = env

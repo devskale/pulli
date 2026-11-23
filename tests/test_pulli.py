@@ -124,6 +124,52 @@ def actions(root: Path, **kw) -> tuple[dict[str, str], int, str]:
 # ── discovery ────────────────────────────────────────────────────────────
 
 
+def test_git_env_does_not_override_ssh_command():
+    """git_env() must never set GIT_SSH_COMMAND.
+
+    Regression: it used to set `ssh -oBatchMode=yes`, and the env var beats
+    a repo's `core.sshCommand` in git's precedence — repos authenticating
+    through a repo-specific ssh command (e.g. `ssh -i ~/.ssh/key -o
+    IdentitiesOnly=yes`) then failed publickey auth and were reported
+    "unreachable" although the network was fine.
+    """
+    import pulli.status as status
+
+    status._env_cache = None  # recompute, whatever an earlier test cached
+    env = status.git_env()
+    assert "GIT_SSH_COMMAND" not in env
+
+
+def test_fetch_honors_repo_core_sshcommand(lab, tmp_path):
+    """A repo's core.sshCommand is what a fetch runs, not pulli's override.
+
+    Builds a repo whose remote is ssh-shaped and whose core.sshCommand is
+    a wrapper that records it ran and fails. If pulli's environment still
+    forced GIT_SSH_COMMAND, git would ignore core.sshCommand entirely —
+    the marker would stay missing (the 2026-11 "1 repo(s) unreachable"
+    false report on a healthy sttts checkout).
+    """
+    import pulli.status as status
+
+    status._env_cache = None
+    clone = lab.clone("uses_sshcommand")
+    marker = tmp_path / "ssh_ran"
+    wrapper = tmp_path / "fake_ssh"
+    wrapper.write_text(f'#!/bin/sh\ntouch "{marker}"\nexit 1\n')
+    wrapper.chmod(0o755)
+    _git(clone, "config", "core.sshCommand", str(wrapper))
+    _git(clone, "remote", "set-url", "origin", "ssh://git@example.com/repo.git")
+
+    tree = discover(lab.root)
+    set_rels(tree)
+    repos = [n for n in iter_repos(tree) if n.path == clone]
+    failed = fetch_all(repos, timeout=5)
+
+    assert marker.exists(), "fetch must have run the repo's core.sshCommand"
+    assert [n.path for n in failed] == [clone]
+    assert failed[0].fetch_failed
+
+
 def test_finds_repos_at_several_depths(lab):
     lab.clone("a")
     (lab.root / "mid").mkdir()
