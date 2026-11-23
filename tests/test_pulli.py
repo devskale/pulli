@@ -524,12 +524,29 @@ def test_merge_in_progress_is_never_pulled(lab):
     assert (r / ".git" / "MERGE_HEAD").exists()  # merge left intact
 
 
-def test_up_to_date_repos_are_silent(lab):
+def test_pull_lists_up_to_date_repos(lab):
+    """The report names the repos that need nothing.
+
+    "Pulled 0, 2 up to date" counts them but doesn't say which repos were
+    checked — the report is the inventory, so every repo gets its line,
+    including the quiet ones.
+    """
+    import contextlib
+    import io
+
+    lab.clone("fresh")
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        pull(lab.root, use_color=False, dry_run=True)
+    assert "● fresh  up to date" in buf.getvalue()
+
+
+def test_up_to_date_repo_gets_a_line(lab):
     lab.clone("r")
     _, _, out = actions(lab.root)
-    # 'upstream' is the lab's own fixture repo and is the only up-to-date one
+    # every checked repo is named, including quiet ones
+    assert "● r  up to date" in out
     assert "Pulled 0" in out
-    assert "up to date" in out
 
 
 def test_no_repos_found(tmp_path):
@@ -892,31 +909,6 @@ def test_cli_verbose_lists_incoming_commits(lab, capsys):
     # and only for -v: the plain run stays one line per repo
     assert cli.main(["--no-fetch", str(lab.root)]) == 0
     assert "two" not in capsys.readouterr().out
-
-
-def test_pull_all_lists_up_to_date_repos(lab):
-    """--all names the repos that need nothing; the default stays silent.
-
-    `Pulled 0, 2 up to date` counts them but doesn't name them — --all is
-    the inventory view that says WHICH repos are fine.
-    """
-    import contextlib
-    import io
-
-    lab.clone("fresh")
-
-    # Default: up-to-date repos are silent.
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        pull(lab.root, use_color=False, dry_run=True)
-    assert "up to date" not in buf.getvalue()
-
-    # --all: each one gets its line.
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        pull(lab.root, use_color=False, dry_run=True, list_all=True)
-    out = buf.getvalue()
-    assert "● fresh  up to date" in out
 
 
 def test_pull_verbose_lists_new_commits(lab, capsys):

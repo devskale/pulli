@@ -100,7 +100,6 @@ the output of normal runs, and is silent when offline.
 
 | flag | effect |
 | --- | --- |
-| `--all` | also list repos that need nothing (default: silent) |
 | `--dry-run` | decide and report, change nothing |
 | `--no-fetch` | use local refs only (faster, may be stale) |
 | `--json` | the same decision as data; implies `--dry-run` |
@@ -117,7 +116,7 @@ corrupt work to make progress.
 | --- | --- |
 | behind upstream, clean | `git pull --ff-only` |
 | behind upstream, **untracked files only** | `git pull --ff-only` — untracked files cannot conflict with a fast-forward, so they are kept and the repo is pulled (marked `untracked N` instead of `dirty N`) |
-| up to date | nothing (silent) |
+| up to date | listed (`● repo  up to date`) — the report is the inventory: every checked repo is named |
 | ahead only | nothing — local commits need a *push*, not a pull |
 | uncommitted changes (tracked) | skipped, with the way out: *commit or stash, then pulli pull again* |
 | diverged (ahead **and** behind) | skipped — a fast-forward is impossible; merge or rebase is your call |

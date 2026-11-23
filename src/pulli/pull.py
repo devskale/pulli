@@ -104,8 +104,7 @@ def _first_meaningful_line(text: str) -> str:
     return ""
 
 
-def _report(node: RepoNode, kind: str, *, use_color: bool, dry_run: bool,
-            list_all: bool = False) -> str | None:
+def _report(node: RepoNode, kind: str, *, use_color: bool, dry_run: bool) -> str | None:
     """One output line per noteworthy repo. Returns the printed line."""
     C = _color
     rel = node.rel
@@ -129,12 +128,10 @@ def _report(node: RepoNode, kind: str, *, use_color: bool, dry_run: bool,
     elif kind == "ahead":
         line = f"  {C('↑', CYAN, use_color)} {rel}  {C(f'↑{node.ahead} ahead (not pushed)', CYAN, use_color)}"
     elif kind == "current":
-        # Nothing to do. Quiet by default (clig.dev: "It's rare that printing
-        # nothing at all is the best default behavior" — but success is the
-        # exception). Worth a line in dry-run mode (full inventory) when dirty,
-        # and always with --all, which asks for the full inventory.
-        if not list_all and not (dry_run and node.dirty):
-            return None
+        # Up to date is listed, not silent: "Pulled 0, 2 up to date" counts
+        # but doesn't say WHICH repos were checked — the report is the
+        # inventory. A dirty repo with nothing to pull says so (untracked
+        # files kept), so its line explains why it wasn't pulled.
         if node.dirty:
             line = f"  {C('◐', YELLOW, use_color)} {rel}  up to date  {_fmt_dirty(node, use_color)}"
         else:
@@ -155,7 +152,6 @@ def pull(
     max_depth: int = 50,
     link_root: Path | None = None,
     verbose: bool = False,
-    list_all: bool = False,
 ) -> int:
     """Pull every repo under `root` that is behind upstream.
 
@@ -196,8 +192,7 @@ def pull(
         kind = _classify(node)
         buckets.setdefault(kind, []).append(node)
         if kind != "pullable":
-            _report(node, kind, use_color=use_color, dry_run=dry_run,
-                    list_all=list_all)
+            _report(node, kind, use_color=use_color, dry_run=dry_run)
 
     pullable = buckets.get("pullable", [])
     pulled: list[RepoNode] = []
