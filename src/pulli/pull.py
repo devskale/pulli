@@ -104,7 +104,8 @@ def _first_meaningful_line(text: str) -> str:
     return ""
 
 
-def _report(node: RepoNode, kind: str, *, use_color: bool, dry_run: bool) -> str | None:
+def _report(node: RepoNode, kind: str, *, use_color: bool, dry_run: bool,
+            list_all: bool = False) -> str | None:
     """One output line per noteworthy repo. Returns the printed line."""
     C = _color
     rel = node.rel
@@ -128,11 +129,16 @@ def _report(node: RepoNode, kind: str, *, use_color: bool, dry_run: bool) -> str
     elif kind == "ahead":
         line = f"  {C('↑', CYAN, use_color)} {rel}  {C(f'↑{node.ahead} ahead (not pushed)', CYAN, use_color)}"
     elif kind == "current":
-        # Nothing to do. A dirty repo with nothing to pull is only worth
-        # mentioning in dry-run mode, where the point is a full inventory.
-        if not (dry_run and node.dirty):
+        # Nothing to do. Quiet by default (clig.dev: "It's rare that printing
+        # nothing at all is the best default behavior" — but success is the
+        # exception). Worth a line in dry-run mode (full inventory) when dirty,
+        # and always with --all, which asks for the full inventory.
+        if not list_all and not (dry_run and node.dirty):
             return None
-        line = f"  {C('◐', YELLOW, use_color)} {rel}  up to date  {_fmt_dirty(node, use_color)}"
+        if node.dirty:
+            line = f"  {C('◐', YELLOW, use_color)} {rel}  up to date  {_fmt_dirty(node, use_color)}"
+        else:
+            line = f"  {C('●', GREEN, use_color)} {rel}  up to date"
     else:  # pullable
         return None  # printed by the pull loop, which knows the outcome
     print(line)
@@ -149,6 +155,7 @@ def pull(
     max_depth: int = 50,
     link_root: Path | None = None,
     verbose: bool = False,
+    list_all: bool = False,
 ) -> int:
     """Pull every repo under `root` that is behind upstream.
 
@@ -189,7 +196,8 @@ def pull(
         kind = _classify(node)
         buckets.setdefault(kind, []).append(node)
         if kind != "pullable":
-            _report(node, kind, use_color=use_color, dry_run=dry_run)
+            _report(node, kind, use_color=use_color, dry_run=dry_run,
+                    list_all=list_all)
 
     pullable = buckets.get("pullable", [])
     pulled: list[RepoNode] = []

@@ -894,6 +894,31 @@ def test_cli_verbose_lists_incoming_commits(lab, capsys):
     assert "two" not in capsys.readouterr().out
 
 
+def test_pull_all_lists_up_to_date_repos(lab):
+    """--all names the repos that need nothing; the default stays silent.
+
+    `Pulled 0, 2 up to date` counts them but doesn't name them — --all is
+    the inventory view that says WHICH repos are fine.
+    """
+    import contextlib
+    import io
+
+    lab.clone("fresh")
+
+    # Default: up-to-date repos are silent.
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        pull(lab.root, use_color=False, dry_run=True)
+    assert "up to date" not in buf.getvalue()
+
+    # --all: each one gets its line.
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        pull(lab.root, use_color=False, dry_run=True, list_all=True)
+    out = buf.getvalue()
+    assert "● fresh  up to date" in out
+
+
 def test_pull_verbose_lists_new_commits(lab, capsys):
     """pull -v shows each pulled repo's new commits (regression for the
     refactor onto status.incoming_commits)."""

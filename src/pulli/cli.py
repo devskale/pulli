@@ -169,6 +169,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="List the new commits under each pulled repo (git log --oneline).",
     )
     pull_p.add_argument(
+        "--all",
+        action="store_true",
+        help="Also list repos that need nothing (default: silent).",
+    )
+    pull_p.add_argument(
         "--no-fetch",
         action="store_true",
         help="Use local refs only (no fetch) — faster, may be stale.",
@@ -461,6 +466,7 @@ def _run_pull(args) -> int:
         max_depth=args.max_depth,
         link_root=getattr(args, "link_root", None),
         verbose=getattr(args, "verbose", False),
+        list_all=getattr(args, "all", False),
     )
 
 

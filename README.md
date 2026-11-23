@@ -100,6 +100,7 @@ the output of normal runs, and is silent when offline.
 
 | flag | effect |
 | --- | --- |
+| `--all` | also list repos that need nothing (default: silent) |
 | `--dry-run` | decide and report, change nothing |
 | `--no-fetch` | use local refs only (faster, may be stale) |
 | `--json` | the same decision as data; implies `--dry-run` |
