@@ -448,6 +448,70 @@ def test_fetch_failure_is_not_a_broken_repo(lab):
     _, rc, out = actions(lab.root)
     assert rc == 0
     assert "unreachable" in out
+    # The note must name the repo — a bare count sends the reader hunting
+    # for which line's ↓↑ is stale.
+    assert "r" in out.split("unreachable")[1]
+
+
+def test_fetch_timeout_is_not_labeled_unreachable(lab, monkeypatch):
+    """A fetch killed by pulli's own timeout is 'fetch timed out', never
+    'unreachable'.
+
+    The remote may be perfectly healthy, just slow (a big pack on a slow
+    link). Labeling it 'unreachable' sends the reader hunting for a network
+    problem that doesn't exist (2026-11: kilocode, 810 commits / 157 MB
+    pack, fetch killed at 8s, falsely reported unreachable).
+
+    The hang is real, not mocked: a local TCP server accepts the fetch's
+    connection and never answers, so the fetch runs until pulli's timeout
+    kills it — the exact production path (run_git TimeoutExpired).
+    """
+    import socket
+    import threading
+
+    import pulli.pull as pull_mod
+    from pulli.status import _classify_fetch
+
+    # What run_git returns on a subprocess timeout (pulli killed the fetch):
+    assert _classify_fetch(128, "git timed out after 10s") == "fetch timed out"
+    # What git itself reports when the *remote* is unreachable:
+    assert _classify_fetch(128, "fatal: unable to access "
+        "'https://github.com/x/y/': Could not resolve host: github.com"
+    ) == "unreachable"
+
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+    port = srv.getsockname()[1]
+
+    def _sink():
+        # Accept and hold connections open, never answer — a fetch hangs.
+        while True:
+            try:
+                conn, _ = srv.accept()
+            except OSError:
+                return
+
+    threading.Thread(target=_sink, daemon=True).start()
+    try:
+        r = lab.clone("r")
+        _git(r, "remote", "set-url", "origin",
+             f"http://127.0.0.1:{port}/repo.git")
+        # 1s timeout so the test stays fast; pull() has no timeout param,
+        # so wrap the fetch it calls.
+        real_fetch = pull_mod.fetch_all
+        monkeypatch.setattr(
+            pull_mod, "fetch_all",
+            lambda repos, **kw: real_fetch(repos, timeout=1, **kw),
+        )
+        _, rc, out = actions(lab.root)
+        assert rc == 0
+        assert "fetch timed out" in out
+        assert "unreachable" not in out
+        # The note names the repo.
+        assert "r" in out.split("fetch timed out")[1]
+    finally:
+        srv.close()
 
 
 # ── pull decisions ───────────────────────────────────────────────────────

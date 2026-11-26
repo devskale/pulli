@@ -246,14 +246,27 @@ def pull(
 
     print()
     if offline:
+        # Name the repos: "1 repo(s) unreachable" without names sends the
+        # reader hunting through the report for which line's ↓↑ is stale.
+        # The word matches the reason — a pulli-side timeout is not an
+        # unreachable remote (the remote may be fine, just slow).
+        names = ", ".join(n.rel for n in offline)
+        timed_out = [n for n in offline if n.fetch_reason == "fetch timed out"]
+        if len(timed_out) == len(offline):
+            label = "fetch timed out"
+            hint = "(slow remote or big pack — rerun, or fetch the repo by hand)"
+        else:
+            label = "unreachable"
+            hint = "(rerun when online)"
         print(
             _color(
-                f"note: {len(offline)} repo(s) unreachable — their ↓↑ may be "
-                "stale (rerun when online).",
+                f"note: {len(offline)} repo(s) {label} — their ↓↑ may be "
+                f"stale {hint}.",
                 YELLOW,
                 use_color,
             )
         )
+        print(_color(f"      {names}", YELLOW, use_color))
     if dry_run:
         print(f"Would pull {len(pullable)} repo(s).")
     else:

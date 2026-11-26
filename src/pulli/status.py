@@ -217,6 +217,13 @@ def _classify_fetch(rc: int, err: str) -> str | None:
         return None
     if rc == 128:
         low = err.lower()
+        # pulli killed the fetch (subprocess timeout) — the remote may be
+        # perfectly healthy, just slow (a big pack on a slow link). This
+        # must not be labeled "unreachable": the reader would look for a
+        # network problem that doesn't exist (2026-11: kilocode, 810 commits
+        # / 157 MB pack, fetch killed at 8s, reported unreachable).
+        if low.startswith("git timed out after"):
+            return "fetch timed out"
         # A hung/failed remote is *not* a repo problem — the tree can still be
         # built from local refs, and pulli stays useful offline.
         if any(s in low for s in ("timed out", "timeout", "could not resolve",
@@ -237,7 +244,7 @@ def _classify_fetch(rc: int, err: str) -> str | None:
 def fetch_all(
     nodes: list[RepoNode],
     *,
-    timeout: float = 8.0,
+    timeout: float = 10.0,
     quiet: bool = False,
     workers: int = 8,
     use_color: bool = True,
@@ -307,7 +314,7 @@ def fetch_all(
 def fetch_and_status(
     nodes: list[RepoNode],
     *,
-    timeout: float = 8.0,
+    timeout: float = 10.0,
     quiet: bool = False,
     workers: int = 8,
     use_color: bool = True,
